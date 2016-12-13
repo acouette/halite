@@ -12,7 +12,7 @@ public class Logger {
 
     static void log(String message){
         try {
-            FileWriter fileWriter= new FileWriter("/home/acouette/halite/halite.custom.log", true);
+            FileWriter fileWriter= new FileWriter("/home/acouette/halite/target/halite.custom.log", true);
             fileWriter.append(message);
             fileWriter.append("\n");
             fileWriter.flush();

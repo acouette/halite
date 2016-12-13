@@ -9,7 +9,6 @@ public class Constants {
 
     static GameMap gameMap;
 
-
     static void initConstants() {
         iPackage = Networking.getInit();
         myID = iPackage.myID;

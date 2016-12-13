@@ -1,7 +1,7 @@
 import java.util.ArrayList;
 import java.util.function.Predicate;
 
-public class MyBot {
+public class RandomBot {
 
 
     public static void main(String[] args) throws java.io.IOException {
@@ -9,7 +9,7 @@ public class MyBot {
 
         Constants.initConstants();
 
-        Networking.sendInit("Couettos");
+        Networking.sendInit("Opponent");
 
 
         int turn = 0;
