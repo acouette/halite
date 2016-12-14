@@ -3,6 +3,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.Predicate;
+import java.util.stream.Collectors;
 
 public class MyBot {
 
@@ -10,6 +11,7 @@ public class MyBot {
     PathManager pathManager = new PathManager();
     Map<Location, Vertex> vertexMap = null;
     List<LocationAndSite> allLocationAndSites;
+    Map<Location, Site> sitesPerLocation;
     int turn;
 
     public static void main(String[] args) throws java.io.IOException {
@@ -27,33 +29,25 @@ public class MyBot {
         Networking.sendInit("Couettos");
 
         allLocationAndSites = getAllLocationAndSites();
+        sitesPerLocation = allLocationAndSites.stream().collect(Collectors.toMap(LocationAndSite::getLocation, LocationAndSite::getSite));
         List<Zone> zones = getZones();
-
-
-        for (int i = 0; i < 10; i++) {
-
-            Logger.log("--------zone");
-            Logger.log("--------zone" + zones.get(i));
-        }
-
 
         turn = 0;
         while (true) {
 
-            Logger.log("--------------------TURN " + (++turn));
 
             ArrayList<Move> moves = new ArrayList<>();
             Constants.gameMap = Networking.getFrame();
             refreshSitesOwnership();
             vertexMap = pathManager.getVertexMap(allLocationAndSites);
 
+
+            long start = System.currentTimeMillis();
             for (int y = 0; y < Constants.gameMap.height; y++) {
                 for (int x = 0; x < Constants.gameMap.width; x++) {
                     Location currentLocation = new Location(x, y);
-                    Site currentSite = Constants.gameMap.getSite(currentLocation);
-                    if (currentSite.owner == Constants.myID) {
-
-                        Logger.log("--------moving location " + currentLocation);
+                    Site currentSite = sitesPerLocation.get(currentLocation);
+                    if (currentSite.owner == Constants.myID && currentSite.strength > 0) {
 
                         vertexMap.values().forEach(Vertex::reset);
                         pathManager.computePaths(vertexMap.get(currentLocation));
@@ -62,68 +56,70 @@ public class MyBot {
                         if (closeHostile != null) {
                             moves.add(new Move(currentLocation, closeHostile));
                         } else {
-                            Location locationToTarget = null;
-                            double bestScore = -1;
-                            Zone chosenZone = null;
-                            LocationWithDistance chosenLocationWithDistance = null;
-                            for (Zone zone : zones) {
-                                if (isAnyNotOwned(zone)) {
-                                    Optional<LocationWithDistance> locationWithDistance = getDistance(zone);
-                                    if (locationWithDistance.isPresent()) {
-                                        double score = getScore(zone, locationWithDistance.get());
-                                        if (score > bestScore) {
-                                            bestScore = score;
-                                            locationToTarget = locationWithDistance.get().getLocation();
-                                            chosenZone = zone;
-                                            chosenLocationWithDistance = locationWithDistance.get();
-                                        }
-                                    }
+                            Location locationToTarget = getLocationToTarget(zones);
+                            if (locationToTarget == null) {
+                                moves.add(new Move(currentLocation, Direction.STILL));
+                            } else {
+                                Direction direction = getDirectionFromVertex(currentLocation, locationToTarget);
+                                Location locationToMoveOnto = Constants.gameMap.getLocation(currentLocation, direction);
+                                Site siteToMoveOnto = sitesPerLocation.get(locationToMoveOnto);
+                                if ((siteToMoveOnto.owner == Constants.myID && currentSite.strength < (turn > 40 ? 50 : 20))
+                                        || (siteToMoveOnto.owner == 0 && siteToMoveOnto.strength >= currentSite.strength)) {
+                                    direction = Direction.STILL;
                                 }
+                                moves.add(new Move(currentLocation, direction));
                             }
-                            Logger.log("location to target : " + locationToTarget);
-                            Logger.log("zone : " + chosenZone);
-                            Logger.log("chosenLocation distance : " + chosenLocationWithDistance.getDistance());
-                            Direction direction = getDirectionFromVertex(currentLocation, locationToTarget);
-                            Location locationToMoveOnto = Constants.gameMap.getLocation(currentLocation, direction);
-                            Site siteToMoveOnto = Constants.gameMap.getSite(locationToMoveOnto);
-                            if ((siteToMoveOnto.owner == Constants.myID && currentSite.strength < (turn > 40 ? 50 : 20))
-                                    || (siteToMoveOnto.owner != Constants.myID && siteToMoveOnto.strength > currentSite.strength)) {
-                                direction = Direction.STILL;
-                            }
-                            moves.add(new Move(currentLocation, direction));
                         }
                     }
                 }
             }
+            Logger.log("time : " + (System.currentTimeMillis() - start) + " ms");
             Networking.sendFrame(moves);
         }
     }
 
+    private Location getLocationToTarget(List<Zone> zones) {
+        Location locationToTarget = null;
+        double bestScore = -1;
+        for (Zone zone : zones) {
+            if (isAnyNotOwned(zone)) {
+                Optional<LocationWithDistance> locationWithDistance = getDistance(zone);
+                if (locationWithDistance.isPresent()) {
+                    double score = getScore(zone, locationWithDistance.get());
+                    if (score > bestScore) {
+                        bestScore = score;
+                        locationToTarget = locationWithDistance.get().getLocation();
+                    }
+                }
+            }
+        }
+        return locationToTarget;
+    }
+
     private double getScore(Zone zone, LocationWithDistance locationWithDistance) {
         double strengthInterest = 255d / (((double) zone.getStrength()) / zone.getLocations().size());
-        return (((zone.getDensity()) / (locationWithDistance.getDistance() + 20))) * strengthInterest;
+        return (((zone.getDensity()) / (locationWithDistance.getDistance() + (turn > 120 ? 0 : 10)))) * strengthInterest;
     }
 
     private boolean isAnyNotOwned(Zone zone) {
-        boolean anyNotOwned = false;
         for (LocationAndSite loc : zone.getLocations()) {
             if (loc.getSite().owner != Constants.myID) {
-                anyNotOwned = true;
-                break;
+                return true;
             }
         }
-        return anyNotOwned;
+        return false;
     }
 
     private void refreshSitesOwnership() {
         for (LocationAndSite locationAndSite : allLocationAndSites) {
             locationAndSite.getSite().owner = Constants.gameMap.getSite(locationAndSite.getLocation()).owner;
+            locationAndSite.getSite().strength = Constants.gameMap.getSite(locationAndSite.getLocation()).strength;
         }
     }
 
     private Optional<LocationWithDistance> getDistance(Zone zone) {
         return zone.getLocations().stream()
-                .filter(l -> l.getSite().owner != Constants.myID)
+                .filter(l -> l.getSite().owner == 0)
                 .map(l -> new LocationWithDistance(l.getLocation(), pathManager.getCostTo(vertexMap.get(l.getLocation()))))
                 .min((l1, l2) -> Double.compare(l1.getDistance(), l2.getDistance()));
     }
@@ -181,7 +177,9 @@ public class MyBot {
 
     private Direction getDirectionFromVertex(Location currentLocation, Location destination) {
         List<LocationAndSite> firstBasedOnVertex = pathManager.getShortestPathTo(vertexMap.get(destination));
-        Logger.log("path found : " + firstBasedOnVertex);
+//        if (firstBasedOnVertex.size() < 2) {
+//            return Direction.EAST;
+//        }
         return getDirection(currentLocation, firstBasedOnVertex.get(1).getLocation());
 
 
@@ -213,7 +211,7 @@ public class MyBot {
 
 
     private Direction findCloseHostile(Location currentLocation) {
-        return findClosest(currentLocation, owner -> owner != Constants.myID && owner != 0, 3);
+        return findClosest(currentLocation, owner -> owner != Constants.myID && owner != 0, 2);
     }
 
     private Direction findClosest(Location currentLocation, Predicate<Integer> ownershipCondition, Integer minDistanceAllowed) {
