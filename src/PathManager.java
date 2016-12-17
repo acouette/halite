@@ -1,4 +1,5 @@
 import java.util.*;
+import java.util.function.Function;
 
 /**
  * Created by acouette on 12/13/16.
@@ -8,22 +9,14 @@ public class PathManager {
 
     Map<Location, Double> costPerLocation;
 
-    private double getCost(Site site) {
-        if (site.owner == Constants.myID) {
-            return 10;
-        } else {
-            return (double) site.strength / site.production;
-        }
-    }
 
-
-    public Map<Location, Vertex> getVertexMap(List<LocationAndSite> locationsAndSites) {
+    public Map<Location, Vertex> getVertexMap(List<LocationAndSite> locationsAndSites, Function<Site, Double> getPathCost) {
         costPerLocation = new HashMap<>();
 
         Map<Location, Vertex> vertexMap = new HashMap<>();
         for (LocationAndSite locAndSites : locationsAndSites) {
             vertexMap.put(locAndSites.getLocation(), new Vertex(locAndSites));
-            costPerLocation.put(locAndSites.getLocation(), getCost(locAndSites.getSite()));
+            costPerLocation.put(locAndSites.getLocation(), getPathCost.apply(locAndSites.getSite()));
         }
 
         for (Vertex vertex : vertexMap.values()) {
