@@ -56,47 +56,55 @@ public class CouettoBot {
             Constants.gameMap = Networking.getFrame();
             refreshSitesOwnership();
             vertexMap = pathManager.getVertexMap(allLocationAndSites, getPathCost);
-
+            List<LocationAndSite> myLocations = allLocationAndSites.stream()
+                    .filter(l -> l.getSite().owner == Constants.myID)
+                    .filter(l -> l.getSite().strength > 0)
+                    .sorted((l1, l2) -> Integer.compare(l2.getSite().strength, l1.getSite().strength))
+                    .collect(Collectors.toList());
+            NextTurnState nextTurnState = new NextTurnState();
 
             //long start = System.currentTimeMillis();
-            for (int y = 0; y < Constants.gameMap.height; y++) {
-                for (int x = 0; x < Constants.gameMap.width; x++) {
-                    Location currentLocation = new Location(x, y);
-                    Site currentSite = sitesPerLocation.get(currentLocation);
-                    if (currentSite.owner == Constants.myID && currentSite.strength > 0) {
+            for (LocationAndSite currentLocationAndSite : myLocations) {
+                Location currentLocation = currentLocationAndSite.getLocation();
+                Site currentSite = currentLocationAndSite.getSite();
 
-                        if (shouldSkip(currentLocation, currentSite)) {
-                            moves.add(new Move(currentLocation, Direction.STILL));
+                Direction direction;
+                if (shouldSkip(currentLocation, currentSite)) {
+                    direction = Direction.STILL;
+                } else {
+                    vertexMap.values().forEach(Vertex::reset);
+                    pathManager.computePaths(vertexMap.get(currentLocation));
+
+                    Direction closeHostile = findCloseHostile(currentLocation, currentSite);
+                    if (closeHostile != null) {
+                        direction = closeHostile;
+                    } else {
+                        Location locationToTarget = getLocationToTarget(zones);
+                        if (locationToTarget == null) {
+                            direction = Direction.STILL;
                         } else {
-                            vertexMap.values().forEach(Vertex::reset);
-                            pathManager.computePaths(vertexMap.get(currentLocation));
-
-                            Direction closeHostile = findCloseHostile(currentLocation, currentSite);
-                            if (closeHostile != null) {
-                                moves.add(new Move(currentLocation, closeHostile));
-                            } else {
-                                Location locationToTarget = getLocationToTarget(zones);
-                                if (locationToTarget == null) {
-                                    moves.add(new Move(currentLocation, Direction.STILL));
-                                } else {
-                                    Direction direction = getDirectionFromVertex(currentLocation, locationToTarget);
-                                    Location locationToMoveOnto = Constants.gameMap.getLocation(currentLocation, direction);
-                                    Site siteToMoveOnto = sitesPerLocation.get(locationToMoveOnto);
-                                    if ((siteToMoveOnto.owner == Constants.myID && !isMinStrengthToFriendlyCell(currentSite))
-                                            || (siteToMoveOnto.owner == 0 && siteToMoveOnto.strength >= currentSite.strength)) {
-                                        direction = Direction.STILL;
-                                    }
-                                    moves.add(new Move(currentLocation, direction));
-                                }
+                            Direction dir = getDirectionFromVertex(currentLocation, locationToTarget);
+                            Location locationToMoveOnto = Constants.gameMap.getLocation(currentLocation, dir);
+                            Site siteToMoveOnto = sitesPerLocation.get(locationToMoveOnto);
+                            if ((siteToMoveOnto.owner == Constants.myID && !isMinStrengthToFriendlyCell(currentSite))
+                                    || (siteToMoveOnto.owner == 0 && siteToMoveOnto.strength >= currentSite.strength)) {
+                                dir = Direction.STILL;
                             }
+                            direction = dir;
                         }
                     }
                 }
+                direction = nextTurnState.preventStackingStrength(currentLocation, currentSite, direction, sitesPerLocation);
+                moves.add(new Move(currentLocation, direction));
+                //Logger.log("time : " + (System.currentTimeMillis() - start) + " ms");
+
             }
-            //Logger.log("time : " + (System.currentTimeMillis() - start) + " ms");
             Networking.sendFrame(moves);
+
+
         }
     }
+
 
     private boolean shouldSkip(Location currentLocation, Site currentSite) {
         int i = 0;
@@ -147,8 +155,9 @@ public class CouettoBot {
 
     private void refreshSitesOwnership() {
         for (LocationAndSite locationAndSite : allLocationAndSites) {
-            locationAndSite.getSite().owner = Constants.gameMap.getSite(locationAndSite.getLocation()).owner;
-            locationAndSite.getSite().strength = Constants.gameMap.getSite(locationAndSite.getLocation()).strength;
+            Site site = Constants.gameMap.getSite(locationAndSite.getLocation());
+            locationAndSite.getSite().owner = site.owner;
+            locationAndSite.getSite().strength = site.strength;
         }
     }
 
@@ -223,11 +232,6 @@ public class CouettoBot {
 
     private Direction getDirection(Location source, Location destination) {
         double angle = Constants.gameMap.getAngle(source, destination);
-        if (Math.random() < 0.5) {
-            angle += 0.01;
-        } else {
-            angle -= 0.01;
-        }
 
         if (angle > -(1f / 4) * Math.PI && angle <= (1f / 4) * Math.PI) {
             return Direction.WEST;
