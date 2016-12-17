@@ -10,7 +10,7 @@ public class NextTurnState {
 
     private final Map<Location, Integer> strengthPerLocation = new HashMap<>();
 
-    private final static int TOLERABLE_LOSS = 30;
+    private final static int TOLERABLE_LOSS = 40;
 
     private static Map<Direction, List<Direction>> locationsToTry = new HashMap<>();
 
@@ -28,13 +28,15 @@ public class NextTurnState {
         Direction optimizedDir = direction;
         Location targetLocation = Constants.gameMap.getLocation(currentLocation, direction);
         Site targetSite = sitesPerLocation.get(targetLocation);
+        Direction outOfTerritoryOption = null;
         if (targetSite.owner == Constants.myID) {
             int minLoss = Integer.MAX_VALUE;
             for (Direction dir : locationsToTry.get(direction)) {
                 Location fallbackLocation = Constants.gameMap.getLocation(currentLocation, dir);
                 Site fallbackSite = sitesPerLocation.get(fallbackLocation);
                 if (fallbackSite.owner == Constants.myID) {
-                    if (!strengthPerLocation.containsKey(fallbackLocation) || strengthPerLocation.get(fallbackLocation) + currentSite.strength < 255 + TOLERABLE_LOSS) {
+                    if (!strengthPerLocation.containsKey(fallbackLocation)
+                            || strengthPerLocation.get(fallbackLocation) + currentSite.strength < 255 + TOLERABLE_LOSS) {
                         optimizedDir = dir;
                         break;
                     } else {
@@ -43,8 +45,14 @@ public class NextTurnState {
                             optimizedDir = dir;
                         }
                     }
+                } else {
+                    outOfTerritoryOption = dir;
                 }
             }
+        }
+
+        if (outOfTerritoryOption != null && direction != Direction.STILL && optimizedDir == Direction.STILL) {
+            optimizedDir = outOfTerritoryOption;
         }
 
 

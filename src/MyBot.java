@@ -7,7 +7,7 @@ public class MyBot {
     public static void main(String[] args) throws java.io.IOException {
 
         new CouettoBot("MyBot", 1.2f,
-                (site, turn) -> site.strength >= (turn > 40 ? 40 : 16),
+                (site, turn) -> site.strength >= (turn > 40 ? site.production * 7 : site.production * 5),
                 turn -> turn > 40 ? 0 : 10,
                 site -> {
                     if (site.owner == Constants.myID) {
