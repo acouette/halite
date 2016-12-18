@@ -15,10 +15,10 @@ public class NextTurnState {
     private static Map<Direction, List<Direction>> locationsToTry = new HashMap<>();
 
     static {
-        locationsToTry.put(Direction.NORTH, Arrays.asList(Direction.NORTH, Direction.STILL, Direction.EAST, Direction.WEST, Direction.SOUTH));
-        locationsToTry.put(Direction.EAST, Arrays.asList(Direction.EAST, Direction.STILL, Direction.NORTH, Direction.SOUTH, Direction.WEST));
-        locationsToTry.put(Direction.WEST, Arrays.asList(Direction.WEST, Direction.STILL, Direction.NORTH, Direction.SOUTH, Direction.EAST));
-        locationsToTry.put(Direction.SOUTH, Arrays.asList(Direction.SOUTH, Direction.STILL, Direction.EAST, Direction.WEST, Direction.NORTH));
+        locationsToTry.put(Direction.NORTH, Arrays.asList(Direction.NORTH, Direction.EAST, Direction.WEST, Direction.SOUTH, Direction.STILL));
+        locationsToTry.put(Direction.EAST, Arrays.asList(Direction.EAST, Direction.NORTH, Direction.SOUTH, Direction.WEST, Direction.STILL));
+        locationsToTry.put(Direction.WEST, Arrays.asList(Direction.WEST, Direction.NORTH, Direction.SOUTH, Direction.EAST, Direction.STILL));
+        locationsToTry.put(Direction.SOUTH, Arrays.asList(Direction.SOUTH, Direction.EAST, Direction.WEST, Direction.NORTH, Direction.STILL));
         locationsToTry.put(Direction.STILL, Arrays.asList(Direction.STILL, Direction.SOUTH, Direction.EAST, Direction.WEST, Direction.NORTH));
     }
 
@@ -34,9 +34,10 @@ public class NextTurnState {
             for (Direction dir : locationsToTry.get(direction)) {
                 Location fallbackLocation = Constants.gameMap.getLocation(currentLocation, dir);
                 Site fallbackSite = sitesPerLocation.get(fallbackLocation);
+                boolean noExess = !strengthPerLocation.containsKey(fallbackLocation)
+                        || strengthPerLocation.get(fallbackLocation) + currentSite.strength < 255 + TOLERABLE_LOSS;
                 if (fallbackSite.owner == Constants.myID) {
-                    if (!strengthPerLocation.containsKey(fallbackLocation)
-                            || strengthPerLocation.get(fallbackLocation) + currentSite.strength < 255 + TOLERABLE_LOSS) {
+                    if (noExess) {
                         optimizedDir = dir;
                         break;
                     } else {
@@ -45,7 +46,7 @@ public class NextTurnState {
                             optimizedDir = dir;
                         }
                     }
-                } else {
+                } else if (noExess) {
                     outOfTerritoryOption = dir;
                 }
             }

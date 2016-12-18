@@ -10,13 +10,22 @@ public class PathManager {
     Map<Location, Double> costPerLocation;
 
 
-    public Map<Location, Vertex> getVertexMap(List<LocationAndSite> locationsAndSites, Function<Site, Double> getPathCost) {
+    public Map<Location, Vertex> getVertexMap(List<LocationAndSite> locationsAndSites, int turn) {
         costPerLocation = new HashMap<>();
 
         Map<Location, Vertex> vertexMap = new HashMap<>();
         for (LocationAndSite locAndSites : locationsAndSites) {
             vertexMap.put(locAndSites.getLocation(), new Vertex(locAndSites));
-            costPerLocation.put(locAndSites.getLocation(), getPathCost.apply(locAndSites.getSite()));
+            double cost;
+            if (locAndSites.getSite().owner == Constants.myID) {
+                cost = turn > 60 ? 12 : 4;
+            } else if (locAndSites.getSite().owner == 0) {
+                cost = (double) locAndSites.getSite().strength / locAndSites.getSite().production;
+            } else {
+                cost = (double) 10;
+            }
+
+            costPerLocation.put(locAndSites.getLocation(), cost);
         }
 
         for (Vertex vertex : vertexMap.values()) {
