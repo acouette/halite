@@ -1,5 +1,4 @@
 import java.util.*;
-import java.util.function.Function;
 
 /**
  * Created by acouette on 12/13/16.
@@ -10,7 +9,7 @@ public class PathManager {
     Map<Location, Double> costPerLocation;
 
 
-    public Map<Location, Vertex> getVertexMap(List<LocationAndSite> locationsAndSites, int turn) {
+    public Map<Location, Vertex> getVertexMap(List<LocationAndSite> locationsAndSites, String name) {
         costPerLocation = new HashMap<>();
 
         Map<Location, Vertex> vertexMap = new HashMap<>();
@@ -18,7 +17,7 @@ public class PathManager {
             vertexMap.put(locAndSites.getLocation(), new Vertex(locAndSites));
             double cost;
             if (locAndSites.getSite().owner == Constants.myID) {
-                cost = turn > 60 ? 12 : 4;
+                cost = Constants.turn > 140 ? 16 : (Constants.turn > 60 ? 12 : 4);
             } else if (locAndSites.getSite().owner == 0) {
                 cost = (double) locAndSites.getSite().strength / locAndSites.getSite().production;
             } else {

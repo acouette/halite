@@ -2,38 +2,34 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Predicate;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 public class CouettoBot {
 
 
     private final String name;
-
     private final float sectionCut;
-
-    private final BiFunction<Site, Integer, Boolean> isMinStrengthToFriendlyCell;
-    private final Function<Integer, Integer> distancePonderation;
+    private final Function<Site, Boolean> isMinStrengthToFriendlyCell;
+    private final Supplier<Integer> distanceWeight;
     private Integer minStrengthToFight;
 
 
-    private PathManager pathManager = new PathManager();
-    private Map<Location, Vertex> vertexMap = null;
+    private final PathManager pathManager = new PathManager();
+    private Map<Location, Vertex> vertexMap;
     private List<LocationAndSite> allLocationAndSites;
     private Map<Location, Site> sitesPerLocation;
-    private int turn;
-    private final boolean handleQuickStart;
+    private List<Zone> zones;
 
 
-    public CouettoBot(String name, float sectionCut, BiFunction<Site, Integer, Boolean> isMinStrengthToFriendlyCell, Function<Integer, Integer> distancePonderation, Integer minStrengthToFight, boolean handleQuickStart) {
+    public CouettoBot(String name, float sectionCut, Function<Site, Boolean> isMinStrengthToFriendlyCell, Supplier<Integer> distanceWeight, Integer minStrengthToFight) {
         this.name = name;
         this.sectionCut = sectionCut;
         this.isMinStrengthToFriendlyCell = isMinStrengthToFriendlyCell;
-        this.distancePonderation = distancePonderation;
+        this.distanceWeight = distanceWeight;
         this.minStrengthToFight = minStrengthToFight;
-        this.handleQuickStart = handleQuickStart;
     }
 
 
@@ -41,36 +37,29 @@ public class CouettoBot {
 
 
         Constants.initConstants();
-
         Networking.sendInit(name);
 
         allLocationAndSites = getAllLocationAndSites();
         sitesPerLocation = allLocationAndSites.stream().collect(Collectors.toMap(LocationAndSite::getLocation, LocationAndSite::getSite));
-        List<Zone> zones = getZones();
+        zones = getZones();
 
-        turn = 0;
         while (true) {
-            turn++;
-
+            Constants.turn++;
             ArrayList<Move> moves = new ArrayList<>();
             Constants.gameMap = Networking.getFrame();
-            refreshSitesOwnership();
-            vertexMap = pathManager.getVertexMap(allLocationAndSites, turn);
-            List<LocationAndSite> myLocations = allLocationAndSites.stream()
+            refreshSitesData();
+            vertexMap = pathManager.getVertexMap(allLocationAndSites, name);
+
+            List<LocationAndSite> locationsToMove = allLocationAndSites.stream()
                     .filter(l -> l.getSite().owner == Constants.myID)
                     .filter(l -> l.getSite().strength > 0)
                     .sorted((l1, l2) -> Integer.compare(l2.getSite().strength, l1.getSite().strength))
                     .collect(Collectors.toList());
             NextTurnState nextTurnState = new NextTurnState();
 
-//            if (handleQuickStart) {
-//                if (handleQuickStart(zones)) continue;
-//            }
-
-            //long start = System.currentTimeMillis();
-            for (LocationAndSite currentLocationAndSite : myLocations) {
-                Location currentLocation = currentLocationAndSite.getLocation();
-                Site currentSite = currentLocationAndSite.getSite();
+            for (LocationAndSite current : locationsToMove) {
+                Location currentLocation = current.getLocation();
+                Site currentSite = current.getSite();
 
                 Direction direction;
                 if (shouldSkip(currentLocation, currentSite)) {
@@ -83,22 +72,24 @@ public class CouettoBot {
                     if (closeHostile != null) {
                         direction = closeHostile;
                     } else {
-                        Location locationToTarget = getLocationToTarget(zones).getLocation();
+                        LocationAndSite locationToTarget = getLocationToTarget();
                         if (locationToTarget == null) {
                             direction = Direction.STILL;
                         } else {
-                            Direction dir = getDirectionFromVertex(currentLocation, locationToTarget);
+                            Direction dir = getDirectionFromVertex(currentLocation, locationToTarget.getLocation());
                             Location locationToMoveOnto = Constants.gameMap.getLocation(currentLocation, dir);
                             Site siteToMoveOnto = sitesPerLocation.get(locationToMoveOnto);
-                            if ((siteToMoveOnto.owner == Constants.myID && !isMinStrengthToFriendlyCell(currentSite))
-                                    || (siteToMoveOnto.owner == 0 && siteToMoveOnto.strength >= currentSite.strength)) {
+                            if ((siteToMoveOnto.owner == Constants.myID && !isMinStrengthToFriendlyCell.apply(currentSite))
+                                    || (siteToMoveOnto.owner == 0
+                                    && siteToMoveOnto.strength >= currentSite.strength
+                                    && (siteToMoveOnto.strength != 255 || currentSite.strength != 255))) {
                                 dir = Direction.STILL;
                             }
                             direction = dir;
                         }
                     }
                 }
-                direction = nextTurnState.preventStackingStrength(currentLocation, currentSite, direction, sitesPerLocation);
+                direction = nextTurnState.preventStackingStrength(current, direction, sitesPerLocation);
                 moves.add(new Move(currentLocation, direction));
                 //Logger.log("time : " + (System.currentTimeMillis() - start) + " ms");
 
@@ -109,8 +100,6 @@ public class CouettoBot {
         }
     }
 
-//
-
 
     private boolean shouldSkip(Location currentLocation, Site currentSite) {
         int i = 0;
@@ -119,15 +108,11 @@ public class CouettoBot {
                 i++;
             }
         }
-        return i == 4 && !isMinStrengthToFriendlyCell(currentSite);
+        return i == 4 && !isMinStrengthToFriendlyCell.apply(currentSite);
 
     }
 
-    private boolean isMinStrengthToFriendlyCell(Site site) {
-        return isMinStrengthToFriendlyCell.apply(site, turn);
-    }
-
-    private LocationAndSite getLocationToTarget(List<Zone> zones) {
+    private LocationAndSite getLocationToTarget() {
         LocationAndSite locationToTarget = null;
         double bestScore = -1;
         for (Zone zone : zones) {
@@ -146,8 +131,9 @@ public class CouettoBot {
     }
 
     private double getScore(Zone zone, LocationWithDistance locationWithDistance) {
-        double strengthInterest = 1 / (((double) zone.getStrength()) / zone.getLocations().size());
-        return ((zone.getDensity() / (locationWithDistance.getDistance() + distancePonderation.apply(turn)))) * strengthInterest;
+
+        return zone.getAverageProduction() / ((locationWithDistance.getDistance() + (Constants.turn > 40 ? 0 : 10)) * zone.getAverageStrength());
+
     }
 
     private boolean isAnyNotOwned(Zone zone) {
@@ -159,7 +145,7 @@ public class CouettoBot {
         return false;
     }
 
-    private void refreshSitesOwnership() {
+    private void refreshSitesData() {
         for (LocationAndSite locationAndSite : allLocationAndSites) {
             Site site = Constants.gameMap.getSite(locationAndSite.getLocation());
             locationAndSite.getSite().owner = site.owner;
@@ -196,7 +182,7 @@ public class CouettoBot {
         List<LocationAndSite> locations = getLocations(remainingLocations, source, minimumProduction);
         int totalProduction = locations.stream().mapToInt(l -> l.getSite().production).sum();
         int totalStrength = locations.stream().mapToInt(l -> l.getSite().strength).sum();
-        return new Zone(locations, totalProduction, ((double) totalProduction) / locations.size(), totalStrength);
+        return new Zone(locations, ((double) totalProduction) / locations.size(), (double) totalStrength / locations.size());
     }
 
 
@@ -319,7 +305,7 @@ public class CouettoBot {
     }
 
 
-    private boolean handleQuickStart(List<Zone> zones) {
+    //private boolean handleQuickStart(List<Zone> zones) {
 //        List<LocationAndSite> myLocations = allLocationAndSites.stream()
 //                .filter(l -> l.getSite().owner == Constants.myID)
 //                .sorted((l1, l2) -> Integer.compare(l2.getSite().strength, l1.getSite().strength))
@@ -397,4 +383,4 @@ public class CouettoBot {
 //        }
 //    }
 
-    }
+}

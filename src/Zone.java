@@ -7,43 +7,26 @@ public class Zone {
 
     private List<LocationAndSite> locations;
 
-    private int totalProduction;
 
-    private double density;
+    private double averageProduction;
 
-    private int strength;
+    private double averageStrength;
 
-    public Zone(List<LocationAndSite> locations, int totalProduction, double density, int strength) {
+    public Zone(List<LocationAndSite> locations, double averageProduction, double averageStrength) {
         this.locations = locations;
-        this.totalProduction = totalProduction;
-        this.density = density;
-        this.strength = strength;
+        this.averageProduction = averageProduction;
+        this.averageStrength = averageStrength;
     }
 
     public List<LocationAndSite> getLocations() {
         return locations;
     }
 
-    public int getTotalProduction() {
-        return totalProduction;
+    public double getAverageProduction() {
+        return averageProduction;
     }
 
-    public double getDensity() {
-        return density;
-    }
-
-    public int getStrength() {
-        return strength;
-    }
-
-
-    @Override
-    public String toString() {
-        return "Zone{" +
-                "locations=" + locations +
-                ", totalProduction=" + totalProduction +
-                ", density=" + density +
-                ", strength=" + strength +
-                '}';
+    public double getAverageStrength() {
+        return averageStrength;
     }
 }

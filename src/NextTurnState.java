@@ -10,7 +10,7 @@ public class NextTurnState {
 
     private final Map<Location, Integer> strengthPerLocation = new HashMap<>();
 
-    private final static int TOLERABLE_LOSS = 40;
+    private final static int TOLERABLE_LOSS_ON_MERGE = 30;
 
     private static Map<Direction, List<Direction>> locationsToTry = new HashMap<>();
 
@@ -23,36 +23,44 @@ public class NextTurnState {
     }
 
 
-    public Direction preventStackingStrength(Location currentLocation, Site currentSite, Direction direction, Map<Location, Site> sitesPerLocation) {
+    public Direction preventStackingStrength(LocationAndSite current, Direction direction, Map<Location, Site> sitesPerLocation) {
 
         Direction optimizedDir = direction;
-        Location targetLocation = Constants.gameMap.getLocation(currentLocation, direction);
-        Site targetSite = sitesPerLocation.get(targetLocation);
+        Site nextSite = sitesPerLocation.get(Constants.gameMap.getLocation(current.getLocation(), direction));
         Direction outOfTerritoryOption = null;
-        if (targetSite.owner == Constants.myID) {
+        if (nextSite.owner == Constants.myID) {
             int minLoss = Integer.MAX_VALUE;
             for (Direction dir : locationsToTry.get(direction)) {
-                Location fallbackLocation = Constants.gameMap.getLocation(currentLocation, dir);
+                Location fallbackLocation = Constants.gameMap.getLocation(current.getLocation(), dir);
                 Site fallbackSite = sitesPerLocation.get(fallbackLocation);
-                boolean noExess = !strengthPerLocation.containsKey(fallbackLocation)
-                        || strengthPerLocation.get(fallbackLocation) + currentSite.strength < 255 + TOLERABLE_LOSS;
+                boolean noExcess = !strengthPerLocation.containsKey(fallbackLocation)
+                        || (strengthPerLocation.get(fallbackLocation) != 255
+                        && strengthPerLocation.get(fallbackLocation) + current.getSite().strength < 255 + TOLERABLE_LOSS_ON_MERGE);
                 if (fallbackSite.owner == Constants.myID) {
-                    if (noExess) {
+                    if (noExcess) {
                         optimizedDir = dir;
                         break;
                     } else {
-                        if (strengthPerLocation.get(fallbackLocation) + currentSite.strength < minLoss) {
-                            minLoss = strengthPerLocation.get(fallbackLocation) + currentSite.strength;
+                        if (strengthPerLocation.get(fallbackLocation) + current.getSite().strength < minLoss) {
+                            minLoss = strengthPerLocation.get(fallbackLocation) + current.getSite().strength;
                             optimizedDir = dir;
                         }
                     }
-                } else if (noExess) {
+                } else if (noExcess) {
                     outOfTerritoryOption = dir;
                 }
             }
+        } else {
+            Location targetLocation = Constants.gameMap.getLocation(current.getLocation(), direction);
+            boolean noExcess = !strengthPerLocation.containsKey(targetLocation)
+                    || (strengthPerLocation.get(targetLocation) != 255
+                    && strengthPerLocation.get(targetLocation) + current.getSite().strength < 255 + TOLERABLE_LOSS_ON_MERGE);
+            if (!noExcess) {
+                optimizedDir = Direction.STILL;
+            }
         }
 
-        if (outOfTerritoryOption != null && direction != Direction.STILL && optimizedDir == Direction.STILL) {
+        if (outOfTerritoryOption != null && optimizedDir != direction) {
             optimizedDir = outOfTerritoryOption;
         }
 
@@ -60,11 +68,11 @@ public class NextTurnState {
         int strengthInTargetNextTurn;
         Location locationThatWillHaveMoreStrength;
         if (optimizedDir == Direction.STILL) {
-            strengthInTargetNextTurn = currentSite.strength + currentSite.production;
-            locationThatWillHaveMoreStrength = currentLocation;
+            strengthInTargetNextTurn = current.getSite().strength + current.getSite().production;
+            locationThatWillHaveMoreStrength = current.getLocation();
         } else {
-            strengthInTargetNextTurn = currentSite.strength;
-            locationThatWillHaveMoreStrength = Constants.gameMap.getLocation(currentLocation, optimizedDir);
+            strengthInTargetNextTurn = current.getSite().strength;
+            locationThatWillHaveMoreStrength = Constants.gameMap.getLocation(current.getLocation(), optimizedDir);
         }
         if (strengthPerLocation.containsKey(locationThatWillHaveMoreStrength)) {
             strengthInTargetNextTurn += strengthPerLocation.get(locationThatWillHaveMoreStrength);
