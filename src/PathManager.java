@@ -30,10 +30,12 @@ public class PathManager {
         for (Vertex vertex : vertexMap.values()) {
             Edge[] edges = new Edge[4];
             int i = 0;
-            for (Direction dir : Direction.CARDINALS) {
-                Location edgeLocation = Constants.gameMap.getLocation(vertex.location.getLocation(), dir);
-                edges[i++] = new Edge(vertexMap.get(edgeLocation), costPerLocation.get(edgeLocation));
+            for (Map.Entry<Direction, LocationAndSite> direction : Constants.DIRECTIONS.get(vertex.location.getLocation()).entrySet()) {
+                if (direction.getKey() != Direction.STILL) {
+                    edges[i++] = new Edge(vertexMap.get(direction.getValue().getLocation()), costPerLocation.get(direction.getValue().getLocation()));
+                }
             }
+
             vertex.adjacencies = edges;
         }
 

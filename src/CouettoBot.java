@@ -1,9 +1,5 @@
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
 import java.util.function.Function;
-import java.util.function.Predicate;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
@@ -17,11 +13,12 @@ public class CouettoBot {
     private Integer minStrengthToFight;
 
 
+    private boolean firstContact = false;
     private final PathManager pathManager = new PathManager();
     private Map<Location, Vertex> vertexMap;
     private List<LocationAndSite> allLocationAndSites;
-    private Map<Location, Site> sitesPerLocation;
     private List<Zone> zones;
+    private Map<Location, LocationAndSite> locationAndSitePerLocations;
 
 
     public CouettoBot(String name, float sectionCut, Function<Site, Boolean> isMinStrengthToFriendlyCell, Supplier<Integer> distanceWeight, Integer minStrengthToFight) {
@@ -38,24 +35,22 @@ public class CouettoBot {
 
         Constants.initConstants();
         Networking.sendInit(name);
-
         allLocationAndSites = getAllLocationAndSites();
-        sitesPerLocation = allLocationAndSites.stream().collect(Collectors.toMap(LocationAndSite::getLocation, LocationAndSite::getSite));
+        locationAndSitePerLocations = allLocationAndSites.stream().collect(Collectors.toMap(LocationAndSite::getLocation, l -> l));
+        buildDirections();
         zones = getZones();
-
         while (true) {
             Constants.turn++;
             ArrayList<Move> moves = new ArrayList<>();
             Constants.gameMap = Networking.getFrame();
             refreshSitesData();
             vertexMap = pathManager.getVertexMap(allLocationAndSites, name);
-
             List<LocationAndSite> locationsToMove = allLocationAndSites.stream()
                     .filter(l -> l.getSite().owner == Constants.myID)
                     .filter(l -> l.getSite().strength > 0)
                     .sorted((l1, l2) -> Integer.compare(l2.getSite().strength, l1.getSite().strength))
                     .collect(Collectors.toList());
-            NextTurnState nextTurnState = new NextTurnState();
+            NextTurnState nextTurnState = new NextTurnState(allLocationAndSites);
 
             for (LocationAndSite current : locationsToMove) {
                 Location currentLocation = current.getLocation();
@@ -68,17 +63,18 @@ public class CouettoBot {
                     vertexMap.values().forEach(Vertex::reset);
                     pathManager.computePaths(vertexMap.get(currentLocation));
 
-                    Direction closeHostile = findCloseHostile(currentLocation, currentSite);
+                    Direction closeHostile = getAttackDirection(currentLocation, currentSite);
                     if (closeHostile != null) {
                         direction = closeHostile;
+                        firstContact = true;
                     } else {
                         LocationAndSite locationToTarget = getLocationToTarget();
                         if (locationToTarget == null) {
                             direction = Direction.STILL;
                         } else {
                             Direction dir = getDirectionFromVertex(currentLocation, locationToTarget.getLocation());
-                            Location locationToMoveOnto = Constants.gameMap.getLocation(currentLocation, dir);
-                            Site siteToMoveOnto = sitesPerLocation.get(locationToMoveOnto);
+                            LocationAndSite toMoveOnto = Constants.DIRECTIONS.get(currentLocation).get(dir);
+                            Site siteToMoveOnto = toMoveOnto.getSite();
                             if ((siteToMoveOnto.owner == Constants.myID && !isMinStrengthToFriendlyCell.apply(currentSite))
                                     || (siteToMoveOnto.owner == 0
                                     && siteToMoveOnto.strength >= currentSite.strength
@@ -89,7 +85,7 @@ public class CouettoBot {
                         }
                     }
                 }
-                direction = nextTurnState.preventStackingStrength(current, direction, sitesPerLocation);
+                direction = nextTurnState.preventStackingStrength(current, direction, firstContact);
                 moves.add(new Move(currentLocation, direction));
                 //Logger.log("time : " + (System.currentTimeMillis() - start) + " ms");
 
@@ -100,15 +96,28 @@ public class CouettoBot {
         }
     }
 
+    private void buildDirections() {
+
+        for (LocationAndSite l : allLocationAndSites) {
+            HashMap<Direction, LocationAndSite> toBuild = new HashMap<>();
+            for (Direction dir : Direction.DIRECTIONS) {
+                toBuild.put(dir, locationAndSitePerLocations.get(Constants.gameMap.getLocation(l.getLocation(), dir)));
+            }
+            Constants.DIRECTIONS.put(l.getLocation(), toBuild);
+        }
+
+
+    }
+
 
     private boolean shouldSkip(Location currentLocation, Site currentSite) {
         int i = 0;
-        for (Direction dir : Direction.CARDINALS) {
-            if (sitesPerLocation.get(Constants.gameMap.getLocation(currentLocation, dir)).owner == Constants.myID) {
+        for (LocationAndSite value : Constants.DIRECTIONS.get(currentLocation).values()) {
+            if (value.getSite().owner == Constants.myID) {
                 i++;
             }
         }
-        return i == 4 && !isMinStrengthToFriendlyCell.apply(currentSite);
+        return i == 5 && !isMinStrengthToFriendlyCell.apply(currentSite);
 
     }
 
@@ -225,24 +234,21 @@ public class CouettoBot {
     private Direction getDirection(Location source, Location destination) {
         double angle = Constants.gameMap.getAngle(source, destination);
 
-        if (angle > -(1f / 4) * Math.PI && angle <= (1f / 4) * Math.PI) {
+        if (angle == 0) {
             return Direction.WEST;
         }
-
-        if (angle > (1f / 4) * Math.PI && angle <= (3f / 4) * Math.PI) {
+        if (angle == (2f / 4) * Math.PI) {
             return Direction.SOUTH;
         }
-
-        if (angle < -(1f / 4) * Math.PI && angle >= -(3f / 3) * Math.PI) {
+        if (angle == -(2f / 4) * Math.PI) {
             return Direction.NORTH;
         }
         return Direction.EAST;
-
     }
 
 
-    private Direction findCloseHostile(Location currentLocation, Site currentSite) {
-        Location closest = findClosest(currentLocation, owner -> owner != Constants.myID && owner != 0);
+    private Direction getAttackDirection(Location currentLocation, Site currentSite) {
+        Location closest = findCloseWithManyNeighbours(currentLocation);
         if (closest != null && minStrengthToFight != null && currentSite.strength <= minStrengthToFight) {
             return Direction.STILL;
         }
@@ -252,24 +258,31 @@ public class CouettoBot {
         return null;
     }
 
-    private Location findClosest(Location currentLocation, Predicate<Integer> ownershipCondition) {
+    private Location findCloseWithManyNeighbours(Location currentLocation) {
 
         double minCost = Double.MAX_VALUE;
         Location minDistanceLocation = null;
-        for (int x = 0; x < Constants.gameMap.width; x++) {
-            for (int y = 0; y < Constants.gameMap.height; y++) {
+        for (LocationAndSite locationAndSite : allLocationAndSites) {
+            Site currentScannedSite = locationAndSite.getSite();
+            if (currentScannedSite.owner != Constants.myID && currentScannedSite.owner != 0) {
+                Location currentScannedLocation = locationAndSite.getLocation();
+                double currentScannedCost = pathManager.getCostTo(vertexMap.get(currentScannedLocation));
+                if (currentScannedCost < minCost && 3 > Constants.gameMap.getDistance(currentLocation, currentScannedLocation)) {
+                    boolean foundNeighbour = false;
 
-                Location currentScannedLocation = new Location(x, y);
-                Site currentScannedSite = sitesPerLocation.get(currentScannedLocation);
-                if (ownershipCondition.test(currentScannedSite.owner)) {
-                    double currentScannedCost = pathManager.getCostTo(vertexMap.get(new Location(x, y)));
-                    if (currentScannedCost < minCost && 3 > Constants.gameMap.getDistance(currentLocation, currentScannedLocation)) {
+                    for (Map.Entry<Direction, LocationAndSite> neighbour : Constants.DIRECTIONS.get(currentScannedLocation).entrySet()) {
+                        if (neighbour.getKey() != Direction.STILL && neighbour.getValue().getSite().owner == currentScannedSite.owner) {
+                            foundNeighbour = true;
+                            break;
+                        }
+                    }
+                    if (foundNeighbour) {
                         minCost = currentScannedCost;
                         minDistanceLocation = currentScannedLocation;
                     }
+
                 }
             }
-
         }
         return minDistanceLocation;
 
@@ -278,9 +291,9 @@ public class CouettoBot {
 
 
     private class LocationWithDistance {
-        private LocationAndSite location;
+        private final LocationAndSite location;
 
-        private double distance;
+        private final double distance;
 
         public LocationWithDistance(LocationAndSite location, double distance) {
             this.location = location;
@@ -291,17 +304,11 @@ public class CouettoBot {
             return location;
         }
 
-        public void setLocation(LocationAndSite location) {
-            this.location = location;
-        }
 
         public double getDistance() {
             return distance;
         }
 
-        public void setDistance(double distance) {
-            this.distance = distance;
-        }
     }
 
 
