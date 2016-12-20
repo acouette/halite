@@ -20,6 +20,8 @@ public class CouettoBot {
     private List<Zone> zones;
     private Map<Location, LocationAndSite> locationAndSitePerLocations;
 
+    private boolean timeoutFallback = false;
+
 
     public CouettoBot(String name, float sectionCut, Function<Site, Boolean> isMinStrengthToFriendlyCell, Supplier<Integer> distanceWeight, Integer minStrengthToFight) {
         this.name = name;
@@ -39,61 +41,103 @@ public class CouettoBot {
         locationAndSitePerLocations = allLocationAndSites.stream().collect(Collectors.toMap(LocationAndSite::getLocation, l -> l));
         buildDirections();
         zones = getZones();
+
+
         while (true) {
+            long start = System.currentTimeMillis();
             Constants.turn++;
             ArrayList<Move> moves = new ArrayList<>();
             Constants.gameMap = Networking.getFrame();
             refreshSitesData();
-            vertexMap = pathManager.getVertexMap(allLocationAndSites, name);
             List<LocationAndSite> locationsToMove = allLocationAndSites.stream()
                     .filter(l -> l.getSite().owner == Constants.myID)
                     .filter(l -> l.getSite().strength > 0)
                     .sorted((l1, l2) -> Integer.compare(l2.getSite().strength, l1.getSite().strength))
                     .collect(Collectors.toList());
-            NextTurnState nextTurnState = new NextTurnState(allLocationAndSites);
 
-            for (LocationAndSite current : locationsToMove) {
-                Location currentLocation = current.getLocation();
-                Site currentSite = current.getSite();
+            if (timeoutFallback) {
 
-                Direction direction;
-                if (shouldSkip(currentLocation, currentSite)) {
-                    direction = Direction.STILL;
-                } else {
-                    vertexMap.values().forEach(Vertex::reset);
-                    pathManager.computePaths(vertexMap.get(currentLocation));
-
-                    Direction closeHostile = getAttackDirection(currentLocation, currentSite);
-                    if (closeHostile != null) {
-                        direction = closeHostile;
-                        firstContact = true;
+                for (LocationAndSite current : locationsToMove) {
+                    Direction direction;
+                    if (current.getSite().strength > 6 * current.getSite().production) {
+                        LocationAndSite closestNotMine = findClosestNotMine(current);
+                        direction = getDirection(current.getLocation(), closestNotMine.getLocation());
                     } else {
-                        LocationAndSite locationToTarget = getLocationToTarget();
-                        if (locationToTarget == null) {
-                            direction = Direction.STILL;
+                        direction = Direction.STILL;
+                    }
+                    moves.add(new Move(current.getLocation(), direction));
+                }
+            } else {
+
+                vertexMap = pathManager.getVertexMap(allLocationAndSites, name);
+                NextTurnState nextTurnState = new NextTurnState(allLocationAndSites);
+
+                for (LocationAndSite current : locationsToMove) {
+                    Location currentLocation = current.getLocation();
+                    Site currentSite = current.getSite();
+
+                    Direction direction;
+                    if (shouldSkip(currentLocation, currentSite)) {
+                        direction = Direction.STILL;
+                    } else {
+                        vertexMap.values().forEach(Vertex::reset);
+                        pathManager.computePaths(vertexMap.get(currentLocation));
+
+                        Direction closeHostile = getAttackDirection(currentLocation, currentSite);
+                        if (closeHostile != null) {
+                            direction = closeHostile;
+                            firstContact = true;
                         } else {
-                            Direction dir = getDirectionFromVertex(currentLocation, locationToTarget.getLocation());
-                            LocationAndSite toMoveOnto = Constants.DIRECTIONS.get(currentLocation).get(dir);
-                            Site siteToMoveOnto = toMoveOnto.getSite();
-                            if ((siteToMoveOnto.owner == Constants.myID && !isMinStrengthToFriendlyCell.apply(currentSite))
-                                    || (siteToMoveOnto.owner == 0
-                                    && siteToMoveOnto.strength >= currentSite.strength
-                                    && (siteToMoveOnto.strength != 255 || currentSite.strength != 255))) {
-                                dir = Direction.STILL;
+                            LocationAndSite locationToTarget = getLocationToTarget();
+                            if (locationToTarget == null) {
+                                direction = Direction.STILL;
+                            } else {
+                                Direction dir = getDirectionFromVertex(currentLocation, locationToTarget.getLocation());
+                                LocationAndSite toMoveOnto = Constants.DIRECTIONS.get(currentLocation).get(dir);
+                                Site siteToMoveOnto = toMoveOnto.getSite();
+                                if ((siteToMoveOnto.owner == Constants.myID && !isMinStrengthToFriendlyCell.apply(currentSite))
+                                        || (siteToMoveOnto.owner == 0
+                                        && siteToMoveOnto.strength >= currentSite.strength
+                                        && (siteToMoveOnto.strength != 255 || currentSite.strength != 255))) {
+                                    dir = Direction.STILL;
+                                }
+                                direction = dir;
                             }
-                            direction = dir;
                         }
                     }
+                    direction = nextTurnState.preventStackingStrength(current, direction, firstContact);
+                    moves.add(new Move(currentLocation, direction));
+
+                    //Logger.log("time : " + (System.currentTimeMillis() - start) + " ms");
+
                 }
-                direction = nextTurnState.preventStackingStrength(current, direction, firstContact);
-                moves.add(new Move(currentLocation, direction));
-                //Logger.log("time : " + (System.currentTimeMillis() - start) + " ms");
+
+                if ((System.currentTimeMillis() - start) > 1000) {
+                    timeoutFallback = true;
+                }
 
             }
             Networking.sendFrame(moves);
 
 
         }
+    }
+
+    private LocationAndSite findClosestNotMine(LocationAndSite current) {
+        double minDistance = Double.MAX_VALUE;
+        LocationAndSite closest = null;
+        for (LocationAndSite locationAndSite : allLocationAndSites) {
+            if (locationAndSite.getSite().owner != Constants.myID) {
+                double distance = Constants.gameMap.getDistance(current.getLocation(), locationAndSite.getLocation());
+                if (distance < minDistance) {
+                    minDistance = distance;
+                    closest = locationAndSite;
+                }
+            }
+        }
+        return closest;
+
+
     }
 
     private void buildDirections() {
@@ -234,16 +278,19 @@ public class CouettoBot {
     private Direction getDirection(Location source, Location destination) {
         double angle = Constants.gameMap.getAngle(source, destination);
 
-        if (angle == 0) {
+        if (angle > -(1f / 4) * Math.PI && angle <= (1f / 4) * Math.PI) {
             return Direction.WEST;
         }
-        if (angle == (2f / 4) * Math.PI) {
+
+        if (angle > (1f / 4) * Math.PI && angle <= (3f / 4) * Math.PI) {
             return Direction.SOUTH;
         }
-        if (angle == -(2f / 4) * Math.PI) {
+
+        if (angle < -(1f / 4) * Math.PI && angle >= -(3f / 3) * Math.PI) {
             return Direction.NORTH;
         }
         return Direction.EAST;
+
     }
 
 
