@@ -55,7 +55,8 @@ public class CouettoBot {
                     .sorted((l1, l2) -> Integer.compare(l2.getSite().strength, l1.getSite().strength))
                     .collect(Collectors.toList());
 
-            if (timeoutFallback) {
+            if (timeoutFallback && Constants.turn > 150 && Constants.gameMap.width > 45 && allLocationAndSites.stream()
+                    .filter(l -> l.getSite().owner == Constants.myID).count() > allLocationAndSites.size() * (3f / 4)) {
 
                 for (LocationAndSite current : locationsToMove) {
                     Direction direction;
@@ -68,7 +69,7 @@ public class CouettoBot {
                     moves.add(new Move(current.getLocation(), direction));
                 }
             } else {
-
+                timeoutFallback = false;
                 vertexMap = pathManager.getVertexMap(allLocationAndSites, name);
                 NextTurnState nextTurnState = new NextTurnState(allLocationAndSites);
 
@@ -112,7 +113,7 @@ public class CouettoBot {
 
                 }
 
-                if ((System.currentTimeMillis() - start) > 1000) {
+                if ((System.currentTimeMillis() - start) > 1100) {
                     timeoutFallback = true;
                 }
 
