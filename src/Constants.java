@@ -7,6 +7,7 @@ import java.util.Map;
 public class Constants {
 
 
+    static double AVERAGE_CELL_COST;
     static InitPackage iPackage;
     static int myID;
     static GameMap gameMap;

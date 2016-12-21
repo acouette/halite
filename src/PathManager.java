@@ -17,11 +17,11 @@ public class PathManager {
             vertexMap.put(locAndSites.getLocation(), new Vertex(locAndSites));
             double cost;
             if (locAndSites.getSite().owner == Constants.myID) {
-                cost = Constants.turn > 140 ? 16 : (Constants.turn > 60 ? 12 : 4);
+                cost = Constants.turn > 140 ? Constants.AVERAGE_CELL_COST : (Constants.turn > 60 ? Constants.AVERAGE_CELL_COST/5: 4);
             } else if (locAndSites.getSite().owner == 0) {
                 cost = (double) locAndSites.getSite().strength / locAndSites.getSite().production;
             } else {
-                cost = (double) 10;
+                cost = Constants.AVERAGE_CELL_COST*1.5;
             }
 
             costPerLocation.put(locAndSites.getLocation(), cost);
@@ -68,8 +68,11 @@ public class PathManager {
 
     public List<LocationAndSite> getShortestPathTo(Vertex target) {
         List<LocationAndSite> path = new ArrayList<>();
-        for (Vertex vertex = target; vertex != null; vertex = vertex.previous)
-            path.add(vertex.location);
+        for (Vertex vertex = target; vertex != null; vertex = vertex.previous) {
+            if (vertex.previous != null) {
+                path.add(vertex.location);
+            }
+        }
 
         Collections.reverse(path);
         return path;
@@ -78,8 +81,11 @@ public class PathManager {
 
     public double getCostTo(Vertex target) {
         double cost = 0;
-        for (Vertex vertex = target; vertex != null; vertex = vertex.previous)
-            cost += costPerLocation.get(vertex.location.getLocation());
+        for (Vertex vertex = target; vertex != null; vertex = vertex.previous) {
+            if (vertex.previous != null) {
+                cost += costPerLocation.get(vertex.location.getLocation());
+            }
+        }
         return cost;
     }
 

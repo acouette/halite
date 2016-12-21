@@ -41,7 +41,9 @@ public class CouettoBot {
         locationAndSitePerLocations = allLocationAndSites.stream().collect(Collectors.toMap(LocationAndSite::getLocation, l -> l));
         buildDirections();
         zones = getZones();
-
+        buildAverageCellCost();
+        Logger.log("cost : " + Constants.AVERAGE_CELL_COST);
+        Logger.log("zones : " + zones.size());
 
         while (true) {
             long start = System.currentTimeMillis();
@@ -74,6 +76,8 @@ public class CouettoBot {
                 NextTurnState nextTurnState = new NextTurnState(allLocationAndSites);
 
                 for (LocationAndSite current : locationsToMove) {
+                    Logger.log("----------------turn " + Constants.turn);
+                    Logger.log("----------------current : " + current);
                     Location currentLocation = current.getLocation();
                     Site currentSite = current.getSite();
 
@@ -124,6 +128,16 @@ public class CouettoBot {
         }
     }
 
+    private void buildAverageCellCost() {
+        double cost = 0;
+        for (LocationAndSite locationAndSite : allLocationAndSites) {
+            if (locationAndSite.getSite().production > 0) {
+                cost += (double) locationAndSite.getSite().strength / locationAndSite.getSite().production;
+            }
+        }
+        Constants.AVERAGE_CELL_COST = cost / allLocationAndSites.size();
+    }
+
     private LocationAndSite findClosestNotMine(LocationAndSite current) {
         double minDistance = Double.MAX_VALUE;
         LocationAndSite closest = null;
@@ -171,9 +185,14 @@ public class CouettoBot {
         double bestScore = -1;
         for (Zone zone : zones) {
             if (isAnyNotOwned(zone)) {
-                Optional<LocationWithDistance> locationWithDistance = getDistance(zone);
+
+                Optional<LocationWithDistance> locationWithDistance = zone.getLocations().stream()
+                        .filter(l -> l.getSite().owner == 0)
+                        .map(l -> new LocationWithDistance(l, pathManager.getCostTo(vertexMap.get(l.getLocation()))))
+                        .min((l1, l2) -> Double.compare(l1.getDistance(), l2.getDistance()));
+
                 if (locationWithDistance.isPresent()) {
-                    double score = getScore(zone, locationWithDistance.get());
+                    double score = zone.getScore() / (locationWithDistance.get().getDistance() + (Constants.turn > 80 ? 0 : Constants.AVERAGE_CELL_COST));
                     if (score > bestScore) {
                         bestScore = score;
                         locationToTarget = locationWithDistance.get().getLocation();
@@ -181,14 +200,21 @@ public class CouettoBot {
                 }
             }
         }
+        if (name.equals("MyBot") && Constants.turn < 30) {
+            Logger.log("location : " + locationToTarget);
+            for (Zone zone : zones) {
+                for (LocationAndSite locationAndSite : zone.getLocations()) {
+                    if (locationAndSite.equals(locationToTarget)) {
+                        Logger.log("zone " + zone);
+                    }
+                }
+            }
+
+
+        }
         return locationToTarget;
     }
 
-    private double getScore(Zone zone, LocationWithDistance locationWithDistance) {
-
-        return zone.getAverageProduction() / ((locationWithDistance.getDistance() + (Constants.turn > 40 ? 0 : 10)) * zone.getAverageStrength());
-
-    }
 
     private boolean isAnyNotOwned(Zone zone) {
         for (LocationAndSite loc : zone.getLocations()) {
@@ -207,13 +233,6 @@ public class CouettoBot {
         }
     }
 
-    private Optional<LocationWithDistance> getDistance(Zone zone) {
-        return zone.getLocations().stream()
-                .filter(l -> l.getSite().owner == 0)
-                .map(l -> new LocationWithDistance(l, pathManager.getCostTo(vertexMap.get(l.getLocation()))))
-                .min((l1, l2) -> Double.compare(l1.getDistance(), l2.getDistance()));
-    }
-
 
     private List<Zone> getZones() {
 
@@ -223,32 +242,37 @@ public class CouettoBot {
 
         List<Zone> zones = new ArrayList<>();
         while (!remainingLocations.isEmpty()) {
-            int bestProduction = remainingLocations.stream().mapToInt(l -> l.getSite().production).max().getAsInt();
-            LocationAndSite peak = remainingLocations.stream().filter(l -> l.getSite().production == bestProduction).findAny().get();
-            double minimumProduction = bestProduction / sectionCut;
-            Zone zone = getZone(remainingLocations, peak, minimumProduction);
+            LocationAndSite bestRemainingLocation = remainingLocations.stream()
+                    .min((l1, l2) -> Double.compare((double) l1.getSite().strength / l1.getSite().production, (double) l2.getSite().strength / l2.getSite().production)).get();
+            double maxReversedScoreInZone;
+            if (bestRemainingLocation.getSite().production == 0) {
+                maxReversedScoreInZone = 0;
+            } else {
+                maxReversedScoreInZone = (bestRemainingLocation.getSite().strength / bestRemainingLocation.getSite().production) * 3;
+            }
+            Zone zone = getZone(remainingLocations, bestRemainingLocation, maxReversedScoreInZone);
             zones.add(zone);
         }
         return zones;
     }
 
-    private Zone getZone(List<LocationAndSite> remainingLocations, LocationAndSite source, double minimumProduction) {
-        List<LocationAndSite> locations = getLocations(remainingLocations, source, minimumProduction);
-        int totalProduction = locations.stream().mapToInt(l -> l.getSite().production).sum();
-        int totalStrength = locations.stream().mapToInt(l -> l.getSite().strength).sum();
-        return new Zone(locations, ((double) totalProduction) / locations.size(), (double) totalStrength / locations.size());
+    private Zone getZone(List<LocationAndSite> remainingLocations, LocationAndSite source, double maxReversedScoreInZone) {
+        List<LocationAndSite> locations = getLocations(remainingLocations, source, maxReversedScoreInZone);
+        double score = locations.stream().filter(l -> l.getSite().strength > 0).
+                mapToDouble(l -> (double) l.getSite().production / l.getSite().strength).average().getAsDouble();
+        return new Zone(locations, score);
     }
 
 
-    private List<LocationAndSite> getLocations(List<LocationAndSite> remainingLocations, LocationAndSite source, double minimumProduction) {
+    private List<LocationAndSite> getLocations(List<LocationAndSite> remainingLocations, LocationAndSite source, double maxReversedScore) {
         remainingLocations.remove(source);
         List<LocationAndSite> inZone = new ArrayList<>();
         inZone.add(source);
         for (Direction direction : Direction.CARDINALS) {
             Location scannedLocation = Constants.gameMap.getLocation(source.getLocation(), direction);
             LocationAndSite locationAndSite = allLocationAndSites.stream().filter(l -> l.getLocation().equals(scannedLocation)).findAny().get();
-            if (minimumProduction <= locationAndSite.getSite().production && remainingLocations.contains(locationAndSite)) {
-                inZone.addAll(getLocations(remainingLocations, locationAndSite, minimumProduction));
+            if (maxReversedScore >= (double) locationAndSite.getSite().strength / locationAndSite.getSite().production && remainingLocations.contains(locationAndSite)) {
+                inZone.addAll(getLocations(remainingLocations, locationAndSite, maxReversedScore));
             }
         }
         return inZone;
@@ -267,10 +291,10 @@ public class CouettoBot {
 
     private Direction getDirectionFromVertex(Location currentLocation, Location destination) {
         List<LocationAndSite> firstBasedOnVertex = pathManager.getShortestPathTo(vertexMap.get(destination));
-        if (firstBasedOnVertex.size() < 2) {
+        if (firstBasedOnVertex.size() < 1) {
             return Direction.EAST;
         }
-        return getDirection(currentLocation, firstBasedOnVertex.get(1).getLocation());
+        return getDirection(currentLocation, firstBasedOnVertex.get(0).getLocation());
 
 
     }
