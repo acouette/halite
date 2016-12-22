@@ -17,11 +17,11 @@ public class PathManager {
             vertexMap.put(locAndSites.getLocation(), new Vertex(locAndSites));
             double cost;
             if (locAndSites.getSite().owner == Constants.myID) {
-                cost = Constants.turn > 140 ? Constants.AVERAGE_CELL_COST : (Constants.turn > 60 ? Constants.AVERAGE_CELL_COST/5: 4);
+                cost = Constants.turn > 140 ? 20 : (Constants.turn > 30 ? 12 : 4);
             } else if (locAndSites.getSite().owner == 0) {
                 cost = (double) locAndSites.getSite().strength / locAndSites.getSite().production;
             } else {
-                cost = Constants.AVERAGE_CELL_COST*1.5;
+                cost = Constants.AVERAGE_CELL_COST * 1.5;
             }
 
             costPerLocation.put(locAndSites.getLocation(), cost);

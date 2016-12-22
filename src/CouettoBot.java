@@ -42,8 +42,6 @@ public class CouettoBot {
         buildDirections();
         zones = getZones();
         buildAverageCellCost();
-        Logger.log("cost : " + Constants.AVERAGE_CELL_COST);
-        Logger.log("zones : " + zones.size());
 
         while (true) {
             long start = System.currentTimeMillis();
@@ -57,7 +55,7 @@ public class CouettoBot {
                     .sorted((l1, l2) -> Integer.compare(l2.getSite().strength, l1.getSite().strength))
                     .collect(Collectors.toList());
 
-            if (timeoutFallback && Constants.turn > 150 && Constants.gameMap.width > 45 && allLocationAndSites.stream()
+            if (timeoutFallback && Constants.turn > 150 && Constants.gameMap.width > 40 && allLocationAndSites.stream()
                     .filter(l -> l.getSite().owner == Constants.myID).count() > allLocationAndSites.size() * (3f / 4)) {
 
                 for (LocationAndSite current : locationsToMove) {
@@ -76,8 +74,6 @@ public class CouettoBot {
                 NextTurnState nextTurnState = new NextTurnState(allLocationAndSites);
 
                 for (LocationAndSite current : locationsToMove) {
-                    Logger.log("----------------turn " + Constants.turn);
-                    Logger.log("----------------current : " + current);
                     Location currentLocation = current.getLocation();
                     Site currentSite = current.getSite();
 
@@ -192,25 +188,13 @@ public class CouettoBot {
                         .min((l1, l2) -> Double.compare(l1.getDistance(), l2.getDistance()));
 
                 if (locationWithDistance.isPresent()) {
-                    double score = zone.getScore() / (locationWithDistance.get().getDistance() + (Constants.turn > 80 ? 0 : Constants.AVERAGE_CELL_COST));
+                    double score = zone.getScore() / (locationWithDistance.get().getDistance() + (Constants.turn > 80 ? 0 : 2 * Constants.AVERAGE_CELL_COST));
                     if (score > bestScore) {
                         bestScore = score;
                         locationToTarget = locationWithDistance.get().getLocation();
                     }
                 }
             }
-        }
-        if (name.equals("MyBot") && Constants.turn < 30) {
-            Logger.log("location : " + locationToTarget);
-            for (Zone zone : zones) {
-                for (LocationAndSite locationAndSite : zone.getLocations()) {
-                    if (locationAndSite.equals(locationToTarget)) {
-                        Logger.log("zone " + zone);
-                    }
-                }
-            }
-
-
         }
         return locationToTarget;
     }
