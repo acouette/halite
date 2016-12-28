@@ -3,17 +3,17 @@
  */
 public class AllTargetInfo {
 
-    private Location currentLocation;
+    private LocationAndSite currentLocation;
 
-    private Location locationToTarget;
+    private LocationAndSite locationToTarget;
 
-    private Location nextLocation;
+    private LocationAndSite nextLocation;
 
     private double cost;
 
     private Direction direction;
 
-    public AllTargetInfo(Location currentLocation, Location locationToTarget, Location nextLocation, double cost, Direction direction) {
+    public AllTargetInfo(LocationAndSite currentLocation, LocationAndSite locationToTarget, LocationAndSite nextLocation, double cost, Direction direction) {
         this.currentLocation = currentLocation;
         this.locationToTarget = locationToTarget;
         this.nextLocation = nextLocation;
@@ -21,11 +21,11 @@ public class AllTargetInfo {
         this.direction = direction;
     }
 
-    public Location getLocationToTarget() {
+    public LocationAndSite getLocationToTarget() {
         return locationToTarget;
     }
 
-    public Location getNextLocation() {
+    public LocationAndSite getNextLocation() {
         return nextLocation;
     }
 
@@ -37,7 +37,23 @@ public class AllTargetInfo {
         return direction;
     }
 
-    public Location getCurrentLocation() {
+    public LocationAndSite getCurrentLocation() {
         return currentLocation;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+
+        AllTargetInfo that = (AllTargetInfo) o;
+
+        return currentLocation != null ? currentLocation.equals(that.currentLocation) : that.currentLocation == null;
+
+    }
+
+    @Override
+    public int hashCode() {
+        return currentLocation != null ? currentLocation.hashCode() : 0;
     }
 }

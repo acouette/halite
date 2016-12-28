@@ -1,19 +1,13 @@
 import java.util.*;
-import java.util.function.Function;
-import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 public class CouettoBot {
 
 
     private final String name;
-    private final float sectionCut;
-    private final Function<Site, Boolean> isMinStrengthToFriendlyCell;
-    private final Supplier<Integer> distanceWeight;
-    private Integer minStrengthToFight;
 
-
-    private boolean firstContact = false;
+    private Map<Integer, Boolean> firstContacts;
+    boolean firstContact = false;
     private final PathManager pathManager = new PathManager();
     private Map<Location, Vertex> vertexMap;
     private List<LocationAndSite> allLocationAndSites;
@@ -21,14 +15,11 @@ public class CouettoBot {
     private Map<Location, LocationAndSite> locationAndSitePerLocations;
 
     private boolean timeoutFallback = false;
+    private List<LocationAndSite> myLocations;
 
 
-    public CouettoBot(String name, float sectionCut, Function<Site, Boolean> isMinStrengthToFriendlyCell, Supplier<Integer> distanceWeight, Integer minStrengthToFight) {
+    public CouettoBot(String name) {
         this.name = name;
-        this.sectionCut = sectionCut;
-        this.isMinStrengthToFriendlyCell = isMinStrengthToFriendlyCell;
-        this.distanceWeight = distanceWeight;
-        this.minStrengthToFight = minStrengthToFight;
     }
 
 
@@ -39,9 +30,11 @@ public class CouettoBot {
         Networking.sendInit(name);
         allLocationAndSites = getAllLocationAndSites();
         locationAndSitePerLocations = allLocationAndSites.stream().collect(Collectors.toMap(LocationAndSite::getLocation, l -> l));
+        firstContacts = allLocationAndSites.stream().map(l -> l.getSite().owner).distinct().collect(Collectors.toMap(o -> o, o -> false));
         buildDirections();
         zones = getZones();
         buildAverageCellCost();
+        buildPlayerDensity();
 
         while (true) {
             long start = System.currentTimeMillis();
@@ -49,14 +42,21 @@ public class CouettoBot {
             ArrayList<Move> moves = new ArrayList<>();
             Constants.gameMap = Networking.getFrame();
             refreshSitesData();
-            List<LocationAndSite> locationsToMove = allLocationAndSites.stream()
+            checkFirstContact();
+
+            myLocations = allLocationAndSites.stream()
                     .filter(l -> l.getSite().owner == Constants.myID)
+                    .collect(Collectors.toList());
+
+
+            List<LocationAndSite> locationsToMove = myLocations.stream()
                     .filter(l -> l.getSite().strength > 0)
                     .sorted((l1, l2) -> Integer.compare(l2.getSite().strength, l1.getSite().strength))
                     .collect(Collectors.toList());
 
+
             if (timeoutFallback && Constants.turn > 150 && Constants.gameMap.width > 40 && allLocationAndSites.stream()
-                    .filter(l -> l.getSite().owner == Constants.myID).count() > allLocationAndSites.size() * (3f / 4)) {
+                    .filter(l -> l.getSite().owner == Constants.myID).count() > allLocationAndSites.size() * (1f / 2)) {
 
                 for (LocationAndSite current : locationsToMove) {
                     Direction direction;
@@ -70,8 +70,14 @@ public class CouettoBot {
                 }
             } else {
                 timeoutFallback = false;
-                vertexMap = pathManager.getVertexMap(allLocationAndSites, name);
+                vertexMap = pathManager.getVertexMap(allLocationAndSites, myLocations);
+
+                if (handleQuickStart()) {
+                    continue;
+                }
+
                 NextTurnState nextTurnState = new NextTurnState(allLocationAndSites);
+
 
                 for (LocationAndSite current : locationsToMove) {
                     Location currentLocation = current.getLocation();
@@ -84,28 +90,30 @@ public class CouettoBot {
                         vertexMap.values().forEach(Vertex::reset);
                         pathManager.computePaths(vertexMap.get(currentLocation));
 
-                        Direction closeHostile = getAttackDirection(currentLocation, currentSite);
-                        if (closeHostile != null) {
-                            direction = closeHostile;
-                            firstContact = true;
+                        Direction attackDirection = getAttackDirection(currentLocation);
+                        if (attackDirection != null) {
+                            direction = attackDirection;
                         } else {
                             LocationAndSite locationToTarget = getLocationToTarget();
                             if (locationToTarget == null) {
                                 direction = Direction.STILL;
                             } else {
-                                Direction dir = getDirectionFromVertex(currentLocation, locationToTarget.getLocation());
-                                LocationAndSite toMoveOnto = Constants.DIRECTIONS.get(currentLocation).get(dir);
-                                Site siteToMoveOnto = toMoveOnto.getSite();
-                                if ((siteToMoveOnto.owner == Constants.myID && !isMinStrengthToFriendlyCell.apply(currentSite))
-                                        || (siteToMoveOnto.owner == 0
-                                        && siteToMoveOnto.strength >= currentSite.strength
-                                        && (siteToMoveOnto.strength != 255 || currentSite.strength != 255))) {
-                                    dir = Direction.STILL;
-                                }
-                                direction = dir;
+                                direction = getDirectionFromVertex(currentLocation, locationToTarget.getLocation());
                             }
                         }
                     }
+                    if (direction != Direction.STILL) {
+                        LocationAndSite toMoveOnto = Constants.DIRECTIONS.get(currentLocation).get(direction);
+                        Site siteToMoveOnto = toMoveOnto.getSite();
+                        if ((siteToMoveOnto.owner == Constants.myID && currentSite.strength < currentSite.production * 5)
+                                || (siteToMoveOnto.owner == 0
+                                && siteToMoveOnto.strength >= currentSite.strength
+                                && (siteToMoveOnto.strength != 255 || currentSite.strength != 255))) {
+                            direction = Direction.STILL;
+                        }
+                    }
+
+
                     direction = nextTurnState.preventStackingStrength(current, direction, firstContact);
                     moves.add(new Move(currentLocation, direction));
 
@@ -121,6 +129,40 @@ public class CouettoBot {
             Networking.sendFrame(moves);
 
 
+        }
+    }
+
+    private void buildPlayerDensity() {
+        Set<Integer> players = new HashSet<>();
+        for (LocationAndSite locationAndSite : allLocationAndSites) {
+            players.add(locationAndSite.getSite().owner);
+        }
+        int playerCount = players.size() - 1;
+        Constants.DENSE_PLAYER = (Constants.gameMap.width + Constants.gameMap.height) / playerCount < 15;
+    }
+
+    private void checkFirstContact() {
+
+        if (firstContacts.values().contains(false)) {
+            for (LocationAndSite locationAndSite : allLocationAndSites) {
+                if (locationAndSite.getSite().owner == 0 && locationAndSite.getSite().strength == 0) {
+                    boolean myCell = false;
+                    int enemyCell = 0;
+                    for (LocationAndSite siteAround : Constants.DIRECTIONS.get(locationAndSite.getLocation()).values()) {
+                        if (siteAround.getSite().owner != 0) {
+                            if (siteAround.getSite().owner != Constants.myID) {
+                                enemyCell = siteAround.getSite().owner;
+                            } else if (siteAround.getSite().owner == Constants.myID) {
+                                myCell = true;
+                            }
+                        }
+                    }
+                    if (myCell && enemyCell != 0) {
+                        firstContacts.put(enemyCell, true);
+                        firstContact = true;
+                    }
+                }
+            }
         }
     }
 
@@ -151,6 +193,52 @@ public class CouettoBot {
 
     }
 
+
+    private Direction getAttackDirection(Location currentLocation) {
+        if (!firstContacts.values().contains(true)) {
+            return null;
+        }
+        Location closest = findCloseWithManyNeighbours(currentLocation);
+        if (closest != null) {
+            return getDirectionFromVertex(currentLocation, closest);
+        }
+        return null;
+    }
+
+    private Location findCloseWithManyNeighbours(Location currentLocation) {
+
+        double maxDistance = -1;
+        Location minDistanceLocation = null;
+        for (LocationAndSite locationAndSite : allLocationAndSites) {
+            double distance = Constants.gameMap.getDistance(currentLocation, locationAndSite.getLocation());
+            if (distance <= 3) {
+                Site currentScannedSite = locationAndSite.getSite();
+                if (currentScannedSite.owner != Constants.myID && currentScannedSite.owner != 0 && firstContacts.get(currentScannedSite.owner)) {
+                    Location currentScannedLocation = locationAndSite.getLocation();
+                    //double currentScannedCost = pathManager.getCostTo(vertexMap.get(currentScannedLocation));
+                    if (distance > maxDistance) {
+                        boolean foundNeighbour = false;
+
+                        for (Map.Entry<Direction, LocationAndSite> neighbour : Constants.DIRECTIONS.get(currentScannedLocation).entrySet()) {
+                            if (neighbour.getKey() != Direction.STILL && neighbour.getValue().getSite().owner == currentScannedSite.owner) {
+                                foundNeighbour = true;
+                                break;
+                            }
+                        }
+                        if (foundNeighbour || minDistanceLocation == null) {
+                            maxDistance = distance;
+                            minDistanceLocation = currentScannedLocation;
+                        }
+
+                    }
+                }
+            }
+        }
+        return minDistanceLocation;
+
+
+    }
+
     private void buildDirections() {
 
         for (LocationAndSite l : allLocationAndSites) {
@@ -172,7 +260,7 @@ public class CouettoBot {
                 i++;
             }
         }
-        return i == 5 && !isMinStrengthToFriendlyCell.apply(currentSite);
+        return i == 5 && currentSite.strength < currentSite.production * 5;
 
     }
 
@@ -188,7 +276,22 @@ public class CouettoBot {
                         .min((l1, l2) -> Double.compare(l1.getDistance(), l2.getDistance()));
 
                 if (locationWithDistance.isPresent()) {
-                    double score = zone.getScore() / (locationWithDistance.get().getDistance() + (Constants.turn > 80 ? 0 : 2 * Constants.AVERAGE_CELL_COST));
+                    double score;
+                    if (Constants.DENSE_PLAYER) {
+                        if (myLocations.size() < 10) {
+                            score = zone.getScore() / (locationWithDistance.get().getDistance() + (2 * Constants.AVERAGE_CELL_COST));
+                        } else {
+                            score = zone.getScore() / (locationWithDistance.get().getDistance() + Constants.AVERAGE_CELL_COST / 3);
+
+                        }
+                    } else {
+                        if (myLocations.size() < 10) {
+                            score = zone.getScore() / (locationWithDistance.get().getDistance() + (3 * Constants.AVERAGE_CELL_COST));
+                        } else {
+                            score = zone.getScore() / (locationWithDistance.get().getDistance() + Constants.AVERAGE_CELL_COST);
+
+                        }
+                    }
                     if (score > bestScore) {
                         bestScore = score;
                         locationToTarget = locationWithDistance.get().getLocation();
@@ -232,7 +335,7 @@ public class CouettoBot {
             if (bestRemainingLocation.getSite().production == 0) {
                 maxReversedScoreInZone = 0;
             } else {
-                maxReversedScoreInZone = (bestRemainingLocation.getSite().strength / bestRemainingLocation.getSite().production) * 3;
+                maxReversedScoreInZone = (bestRemainingLocation.getSite().strength / bestRemainingLocation.getSite().production) * 2;
             }
             Zone zone = getZone(remainingLocations, bestRemainingLocation, maxReversedScoreInZone);
             zones.add(zone);
@@ -303,49 +406,6 @@ public class CouettoBot {
     }
 
 
-    private Direction getAttackDirection(Location currentLocation, Site currentSite) {
-        Location closest = findCloseWithManyNeighbours(currentLocation);
-        if (closest != null && minStrengthToFight != null && currentSite.strength <= minStrengthToFight) {
-            return Direction.STILL;
-        }
-        if (closest != null) {
-            return getDirectionFromVertex(currentLocation, closest);
-        }
-        return null;
-    }
-
-    private Location findCloseWithManyNeighbours(Location currentLocation) {
-
-        double minCost = Double.MAX_VALUE;
-        Location minDistanceLocation = null;
-        for (LocationAndSite locationAndSite : allLocationAndSites) {
-            Site currentScannedSite = locationAndSite.getSite();
-            if (currentScannedSite.owner != Constants.myID && currentScannedSite.owner != 0) {
-                Location currentScannedLocation = locationAndSite.getLocation();
-                double currentScannedCost = pathManager.getCostTo(vertexMap.get(currentScannedLocation));
-                if (currentScannedCost < minCost && 3 > Constants.gameMap.getDistance(currentLocation, currentScannedLocation)) {
-                    boolean foundNeighbour = false;
-
-                    for (Map.Entry<Direction, LocationAndSite> neighbour : Constants.DIRECTIONS.get(currentScannedLocation).entrySet()) {
-                        if (neighbour.getKey() != Direction.STILL && neighbour.getValue().getSite().owner == currentScannedSite.owner) {
-                            foundNeighbour = true;
-                            break;
-                        }
-                    }
-                    if (foundNeighbour) {
-                        minCost = currentScannedCost;
-                        minDistanceLocation = currentScannedLocation;
-                    }
-
-                }
-            }
-        }
-        return minDistanceLocation;
-
-
-    }
-
-
     private class LocationWithDistance {
         private final LocationAndSite location;
 
@@ -368,82 +428,95 @@ public class CouettoBot {
     }
 
 
-    //private boolean handleQuickStart(List<Zone> zones) {
-//        List<LocationAndSite> myLocations = allLocationAndSites.stream()
-//                .filter(l -> l.getSite().owner == Constants.myID)
-//                .sorted((l1, l2) -> Integer.compare(l2.getSite().strength, l1.getSite().strength))
-//                .collect(Collectors.toList());
-//        if (myLocations.size() > 4) {
-//            return false;
-//        }
-//        Logger.log("turn : " + turn);
-//        List<AllTargetInfo> locations = new ArrayList<>();
-//        int totalStrength = 0;
-//        for (LocationAndSite currentLocationAndSite : myLocations) {
-//            Location currentLocation = currentLocationAndSite.getLocation();
-//            Site currentSite = currentLocationAndSite.getSite();
-//            totalStrength += currentSite.strength;
-//            vertexMap.values().forEach(Vertex::reset);
-//            pathManager.computePaths(vertexMap.get(currentLocation));
-//            LocationAndSite locationToTarget = getLocationToTarget(zones);
-//            Direction dir = getDirectionFromVertex(currentLocation, locationToTarget.getLocation());
-//            Location locationToMoveOnto = Constants.gameMap.getLocation(currentLocation, dir);
-//            double cost = pathManager.getCostTo(vertexMap.get(locationToTarget.getLocation()));
-//            AllTargetInfo l = new AllTargetInfo(currentLocation, locationToTarget.getLocation(), locationToMoveOnto, cost, dir);
-//            locations.add(l);
-//        }
-//        Set<Location> locationsToTarget = locations.stream().map(AllTargetInfo::getLocationToTarget).collect(Collectors.toSet());
-//        if (locationsToTarget.size() != 1) {
-//            return false;
-//        }
-//
-//        ArrayList<Move> shortMoves = new ArrayList<>();
-//        List<Location> notOwnedNextLocations = locations.stream().map(AllTargetInfo::getNextLocation).filter(l -> sitesPerLocation.get(l).owner != Constants.myID).collect(Collectors.toList());
-//        if (notOwnedNextLocations.size() != 1) {
-//            return false;
-//        }
-//        Site notOwnedSite = sitesPerLocation.get(notOwnedNextLocations.get(0));
-//        Logger.log("locationToTarget : " + notOwnedSite);
-//        Logger.log("locationToTarget str : " + notOwnedSite.strength);
-//        Logger.log("totalStrength : " + totalStrength);
-//
-//
-//
-//
-//        if (notOwnedSite.strength > totalStrength) {
-//            for (AllTargetInfo currentLocationAndSite : locations) {
-//                shortMoves.add(new Move(currentLocationAndSite.getCurrentLocation(), Direction.STILL));
-//            }
-//            Networking.sendFrame(shortMoves);
-//            return true;
-//        } else {
-//            List<AllTargetInfo> toPlayInOrder = locations.stream().sorted((l1, l2) -> Double.compare(l2.getCost(), l1.getCost())).collect(Collectors.toList());
-//
-//            AllTargetInfo closest = toPlayInOrder.get(toPlayInOrder.size() - 1);
-//            if (notOwnedSite.strength < sitesPerLocation.get(closest.getCurrentLocation()).strength) {
-//                shortMoves.add(new Move(closest.getCurrentLocation(), closest.getDirection()));
-//                Networking.sendFrame(shortMoves);
-//                return true;
-//            }
-//
-//
-//            boolean first = true;
-//            for (AllTargetInfo allTargetInfo : toPlayInOrder) {
-//                if (!first) {
-//                    Constants.gameMap = Networking.getFrame();
-//                }
-//                Direction direction;
-//                if (sitesPerLocation.get(allTargetInfo.getCurrentLocation()).strength == 0) {
-//                    direction = Direction.STILL;
-//                } else {
-//                    direction = allTargetInfo.getDirection();
-//                }
-//                shortMoves.add(new Move(allTargetInfo.getCurrentLocation(), direction));
-//                Networking.sendFrame(shortMoves);
-//                first = false;
-//            }
-//            return true;
-//        }
-//    }
+    private boolean handleQuickStart() {
+        List<LocationAndSite> myLocations = allLocationAndSites.stream()
+                .filter(l -> l.getSite().owner == Constants.myID)
+                .sorted((l1, l2) -> Integer.compare(l2.getSite().strength, l1.getSite().strength))
+                .collect(Collectors.toList());
+        if (myLocations.size() > 5) {
+            return false;
+        }
+        List<AllTargetInfo> locations = new ArrayList<>();
+        int totalStrength = 0;
+        for (LocationAndSite currentLocationAndSite : myLocations) {
+            Location currentLocation = currentLocationAndSite.getLocation();
+            Site currentSite = currentLocationAndSite.getSite();
+            totalStrength += currentSite.strength;
+            vertexMap.values().forEach(Vertex::reset);
+            pathManager.computePaths(vertexMap.get(currentLocation));
+            LocationAndSite locationToTarget = getLocationToTarget();
+            Direction dir = getDirectionFromVertex(currentLocation, locationToTarget.getLocation());
+            LocationAndSite locationToMoveOnto = Constants.DIRECTIONS.get(currentLocation).get(dir);
+            double cost = pathManager.getCostTo(vertexMap.get(locationToTarget.getLocation()));
+            AllTargetInfo l = new AllTargetInfo(currentLocationAndSite, locationToTarget, locationToMoveOnto, cost, dir);
+            locations.add(l);
+        }
+        Set<LocationAndSite> locationsToTarget = locations.stream().map(AllTargetInfo::getLocationToTarget).collect(Collectors.toSet());
+        if (locationsToTarget.size() != 1) {
+            return false;
+        }
+
+        ArrayList<Move> shortMoves = new ArrayList<>();
+        List<LocationAndSite> notOwnedNextLocations = locations.stream()
+                .map(AllTargetInfo::getNextLocation).filter(l -> l.getSite().owner != Constants.myID).collect(Collectors.toList());
+        if (notOwnedNextLocations.size() != 1) {
+            return false;
+        }
+        Site notOwnedSite = notOwnedNextLocations.get(0).getSite();
+
+        if (notOwnedSite.strength < myLocations.stream().mapToInt(l -> l.getSite().production).sum() * 5) {
+            return false;
+        }
+
+
+        List<AllTargetInfo> toPlayInOrder = locations.stream().sorted((l1, l2) -> Double.compare(l2.getCost(), l1.getCost())).collect(Collectors.toList());
+
+        int i = 0;
+        for (AllTargetInfo toPlay : toPlayInOrder) {
+            totalStrength += i * toPlay.getCurrentLocation().getSite().production;
+            i++;
+        }
+
+
+        if (notOwnedSite.strength >= totalStrength) {
+            for (AllTargetInfo currentLocationAndSite : locations) {
+                shortMoves.add(new Move(currentLocationAndSite.getCurrentLocation().getLocation(), Direction.STILL));
+            }
+            Networking.sendFrame(shortMoves);
+            return true;
+        } else {
+
+            AllTargetInfo closest = toPlayInOrder.get(toPlayInOrder.size() - 1);
+            if (notOwnedSite.strength < closest.getCurrentLocation().getSite().strength) {
+                return false;
+            }
+
+
+            boolean first = true;
+            for (AllTargetInfo allTargetInfo : toPlayInOrder) {
+                if (!first) {
+                    Constants.gameMap = Networking.getFrame();
+                    refreshSitesData();
+                }
+
+                for (AllTargetInfo notToMove : toPlayInOrder) {
+                    if (!notToMove.equals(allTargetInfo)) {
+                        shortMoves.add(new Move(notToMove.getCurrentLocation().getLocation(), Direction.STILL));
+                    } else {
+                        Direction direction;
+                        if (allTargetInfo.getCurrentLocation().getSite().strength == 0) {
+                            direction = Direction.STILL;
+                        } else {
+                            direction = allTargetInfo.getDirection();
+                        }
+                        shortMoves.add(new Move(allTargetInfo.getCurrentLocation().getLocation(), direction));
+                    }
+                }
+                Networking.sendFrame(shortMoves);
+                first = false;
+            }
+            return true;
+        }
+    }
 
 }

@@ -9,7 +9,7 @@ public class PathManager {
     Map<Location, Double> costPerLocation;
 
 
-    public Map<Location, Vertex> getVertexMap(List<LocationAndSite> locationsAndSites, String name) {
+    public Map<Location, Vertex> getVertexMap(List<LocationAndSite> locationsAndSites, List<LocationAndSite> myLocations) {
         costPerLocation = new HashMap<>();
 
         Map<Location, Vertex> vertexMap = new HashMap<>();
@@ -17,11 +17,11 @@ public class PathManager {
             vertexMap.put(locAndSites.getLocation(), new Vertex(locAndSites));
             double cost;
             if (locAndSites.getSite().owner == Constants.myID) {
-                cost = Constants.turn > 140 ? 20 : (Constants.turn > 30 ? 12 : 4);
+                cost = Constants.turn > 140 ? 20 : (myLocations.size() > 10 ? 12 : 4);
             } else if (locAndSites.getSite().owner == 0) {
                 cost = (double) locAndSites.getSite().strength / locAndSites.getSite().production;
             } else {
-                cost = Constants.AVERAGE_CELL_COST * 1.5;
+                cost = 1;
             }
 
             costPerLocation.put(locAndSites.getLocation(), cost);
