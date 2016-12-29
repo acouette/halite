@@ -21,7 +21,7 @@ public class PathManager {
             } else if (locAndSites.getSite().owner == 0) {
                 cost = (double) locAndSites.getSite().strength / locAndSites.getSite().production;
             } else {
-                cost = 1;
+                cost = 2;
             }
 
             costPerLocation.put(locAndSites.getLocation(), cost);
