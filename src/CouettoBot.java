@@ -53,7 +53,7 @@ public class CouettoBot {
             List<LocationAndSite> locationsToMove = getLocationsToMoveInOrder();
 
 
-            if (timeoutFallback && Constants.turn > 150 && Constants.gameMap.width > 40 && allLocationAndSites.stream()
+            if (timeoutFallback && Constants.turn > 100 && Constants.gameMap.width > 40 && allLocationAndSites.stream()
                     .filter(l -> l.getSite().owner == Constants.myID).count() > allLocationAndSites.size() * (1f / 2)) {
 
                 for (LocationAndSite current : locationsToMove) {
@@ -136,7 +136,7 @@ public class CouettoBot {
     }
 
     private boolean isProductionEnoughToFriendly(Site currentSite) {
-        if (myLocations.size() > 30) {
+        if (myLocations.size() > 20) {
             return currentSite.strength < currentSite.production * 6;
         } else {
             return currentSite.strength < currentSite.production * 5;
@@ -311,17 +311,17 @@ public class CouettoBot {
                 if (locationWithDistance.isPresent()) {
                     double score;
                     if (Constants.DENSE_PLAYER) {
-                        if (myLocations.size() < 10) {
-                            score = zone.getScore() / (locationWithDistance.get().getDistance() + (2 * Constants.AVERAGE_CELL_COST));
+                        if (myLocations.size() < 8) {
+                            score = zone.getScore() / (locationWithDistance.get().getDistance() + (1.5 * Constants.AVERAGE_CELL_COST));
                         } else {
-                            score = zone.getScore() / (locationWithDistance.get().getDistance() + Constants.AVERAGE_CELL_COST / 3);
+                            score = zone.getScore() / (locationWithDistance.get().getDistance());
 
                         }
                     } else {
-                        if (myLocations.size() < 10) {
-                            score = zone.getScore() / (locationWithDistance.get().getDistance() + (3 * Constants.AVERAGE_CELL_COST));
+                        if (myLocations.size() < 15) {
+                            score = zone.getScore() / (locationWithDistance.get().getDistance() + (2 * Constants.AVERAGE_CELL_COST));
                         } else {
-                            score = zone.getScore() / (locationWithDistance.get().getDistance() + Constants.AVERAGE_CELL_COST);
+                            score = zone.getScore() / (locationWithDistance.get().getDistance() + Constants.AVERAGE_CELL_COST / 2);
 
                         }
                     }

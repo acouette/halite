@@ -17,7 +17,7 @@ public class PathManager {
             vertexMap.put(locAndSites.getLocation(), new Vertex(locAndSites));
             double cost;
             if (locAndSites.getSite().owner == Constants.myID) {
-                cost = Constants.turn > 140 ? 20 : (myLocations.size() > 10 ? 12 : 4);
+                cost = myLocations.size() > 100  ? 30 : (myLocations.size() > 40 ? 20 : (myLocations.size() > 10 ? 14 : 5));
             } else if (locAndSites.getSite().owner == 0) {
                 cost = (double) locAndSites.getSite().strength / locAndSites.getSite().production;
             } else {

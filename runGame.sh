@@ -11,7 +11,8 @@ cp oneGame.sh target
 cd target
 
 printf "\n30 30 Mybot vs RandomBot\n"
-./oneGame.sh "30 30" "java MyBot" "java -cp ../oldtarget MyBot2"
+./oneGame.sh "40 40" "java MyBot" "java -cp ../oldtarget MyBot2" "java -cp ../oldtarget MyBot2"
+#"java -cp ../oldtarget MyBot2" "java -cp ../oldtarget MyBot2" "java -cp ../oldtarget MyBot2" "java -cp ../oldtarget MyBot2"
 #./oneGame.sh "30 30" "java MyBot" "java RandomBot"
 #./oneGame.sh "30 30" "java MyBot" "java RandomBot"
 #./oneGame.sh "30 30" "java MyBot" "java RandomBot"
