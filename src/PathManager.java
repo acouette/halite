@@ -9,7 +9,9 @@ public class PathManager {
     Map<Location, Double> costPerLocation;
 
 
-    public Map<Location, Vertex> getVertexMap(List<LocationAndSite> locationsAndSites, List<LocationAndSite> myLocations) {
+    private Map<Location, Vertex> vertexMap;
+
+    public PathManager(List<LocationAndSite> locationsAndSites, List<LocationAndSite> myLocations) {
         costPerLocation = new HashMap<>();
 
         Map<Location, Vertex> vertexMap = new HashMap<>();
@@ -17,7 +19,7 @@ public class PathManager {
             vertexMap.put(locAndSites.getLocation(), new Vertex(locAndSites));
             double cost;
             if (locAndSites.getSite().owner == Constants.myID) {
-                cost = myLocations.size() > 100  ? 30 : (myLocations.size() > 40 ? 20 : (myLocations.size() > 10 ? 14 : 5));
+                cost = myLocations.size() > 100 ? 20 : myLocations.size() > 10 ? 12 : 4;
             } else if (locAndSites.getSite().owner == 0) {
                 cost = (double) locAndSites.getSite().strength / locAndSites.getSite().production;
             } else {
@@ -38,11 +40,13 @@ public class PathManager {
 
             vertex.adjacencies = edges;
         }
-
-        return vertexMap;
+        this.vertexMap = vertexMap;
     }
 
-    public void computePaths(Vertex source) {
+
+    public void computePaths(Location sourceLoc) {
+        vertexMap.values().forEach(Vertex::reset);
+        Vertex source = vertexMap.get(sourceLoc);
 
         source.minDistance = 0;
         PriorityQueue<Vertex> vertexQueue = new PriorityQueue<>();
@@ -66,9 +70,9 @@ public class PathManager {
         }
     }
 
-    public List<LocationAndSite> getShortestPathTo(Vertex target) {
+    public List<LocationAndSite> getShortestPathTo(Location target) {
         List<LocationAndSite> path = new ArrayList<>();
-        for (Vertex vertex = target; vertex != null; vertex = vertex.previous) {
+        for (Vertex vertex = vertexMap.get(target); vertex != null; vertex = vertex.previous) {
             if (vertex.previous != null) {
                 path.add(vertex.location);
             }
@@ -79,9 +83,9 @@ public class PathManager {
     }
 
 
-    public double getCostTo(Vertex target) {
+    public double getCostTo(Location target) {
         double cost = 0;
-        for (Vertex vertex = target; vertex != null; vertex = vertex.previous) {
+        for (Vertex vertex = vertexMap.get(target); vertex != null; vertex = vertex.previous) {
             if (vertex.previous != null) {
                 cost += costPerLocation.get(vertex.location.getLocation());
             }

@@ -78,7 +78,8 @@ public class NextTurnState {
 
         if (wentToCombat && optimizedDir == direction) {
             for (Map.Entry<Direction, LocationAndSite> aroundBullet : Constants.DIRECTIONS.get(locationThatWillHaveMoreStrength).entrySet()) {
-                if (aroundBullet.getKey() != Direction.STILL) {
+                if (((direction == Direction.SOUTH || direction == Direction.NORTH) && (aroundBullet.getKey() == Direction.SOUTH || aroundBullet.getKey() == Direction.NORTH))
+                        || ((direction == Direction.WEST || direction == Direction.EAST) && (aroundBullet.getKey() == Direction.WEST || aroundBullet.getKey() == Direction.EAST))) {
                     toExclude.add(aroundBullet.getValue().getLocation());
                 }
             }
@@ -88,4 +89,7 @@ public class NextTurnState {
     }
 
 
+    public boolean willBeEmpty(Location location) {
+        return strengthPerLocation.get(location) == 0;
+    }
 }

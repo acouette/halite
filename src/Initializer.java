@@ -23,7 +23,7 @@ public class Initializer {
             if (bestRemainingLocation.getSite().production == 0) {
                 maxReversedScoreInZone = 0;
             } else {
-                maxReversedScoreInZone = (bestRemainingLocation.getSite().strength / Math.pow(bestRemainingLocation.getSite().production, 8/7)) * 1.5;
+                maxReversedScoreInZone = (bestRemainingLocation.getSite().strength / bestRemainingLocation.getSite().production) * 1.8;
             }
             Zone zone = getZone(remainingLocations, bestRemainingLocation, maxReversedScoreInZone);
             zones.add(zone);
@@ -35,7 +35,7 @@ public class Initializer {
     private Zone getZone(List<LocationAndSite> remainingLocations, LocationAndSite source, double maxReversedScoreInZone) {
         List<LocationAndSite> locations = getLocations(remainingLocations, source, maxReversedScoreInZone);
         double score = locations.stream().filter(l -> l.getSite().strength > 0).
-                mapToDouble(l -> (double) Math.pow(l.getSite().production, 8/7) / l.getSite().strength).average().getAsDouble();
+                mapToDouble(l -> (double) l.getSite().production / l.getSite().strength).average().getAsDouble();
         return new Zone(locations, score);
     }
 
@@ -47,7 +47,7 @@ public class Initializer {
         for (Direction direction : Direction.CARDINALS) {
             Location scannedLocation = Constants.gameMap.getLocation(source.getLocation(), direction);
             LocationAndSite locationAndSite = allLocationAndSites.stream().filter(l -> l.getLocation().equals(scannedLocation)).findAny().get();
-            if (maxReversedScore >= (double) locationAndSite.getSite().strength / Math.pow(locationAndSite.getSite().production, 8/7) && remainingLocations.contains(locationAndSite)) {
+            if (maxReversedScore >= (double) locationAndSite.getSite().strength / locationAndSite.getSite().production && remainingLocations.contains(locationAndSite)) {
                 inZone.addAll(getLocations(remainingLocations, locationAndSite, maxReversedScore));
             }
         }
