@@ -5,6 +5,7 @@ import java.util.stream.Collectors;
 public class CouettoBot {
 
 
+    public static final int NEXT_TO_EMPTY_MIN_ATTACK = 15;
     private final String name;
 
     private Map<Integer, Boolean> firstContacts;
@@ -78,6 +79,7 @@ public class CouettoBot {
                     Site currentSite = current.getSite();
                     Location currentLocation = current.getLocation();
                     boolean wentToCombat = false;
+                    boolean isAttack = false;
                     Direction direction;
                     if (current.getSite().strength == 0) {
                         direction = Direction.STILL;
@@ -91,22 +93,31 @@ public class CouettoBot {
                             direction = Direction.STILL;
                         } else {
 
-                            if (!surroundedByFriendly && (direction = getAroundEmptyDirection(nextTurnState, currentLocation)) != null) {
+                            if (!surroundedByFriendly && current.getSite().strength > NEXT_TO_EMPTY_MIN_ATTACK
+                                    && (direction = getAroundEmptyDirection(nextTurnState, currentLocation)) != null) {
                                 wentToCombat = true;
                             } else {
                                 pathManager.computePaths(currentLocation);
                                 LocationAndSite locationToTarget = getLocationToAttack(current);
                                 if (locationToTarget == null) {
                                     locationToTarget = getLocationToGo();
+                                } else {
+                                    isAttack = true;
                                 }
                                 if (locationToTarget != null) {
+
                                     direction = getDirectionFromVertex(currentLocation, locationToTarget.getLocation());
                                     LocationAndSite toMoveOnto = Constants.DIRECTIONS.get(currentLocation).get(direction);
                                     Site siteToMoveOnto = toMoveOnto.getSite();
-                                    if ((siteToMoveOnto.owner == Constants.myID && strengthNotEnough)
+                                    if (!isAttack && hasEnemyNext(toMoveOnto)) {
+                                        isAttack = true;
+                                    }
+                                    if (isAttack && neededStrengthIfEnemy(current) > current.getSite().strength) {
+                                        direction = Direction.STILL;
+                                    } else if ((siteToMoveOnto.owner == Constants.myID && strengthNotEnough)
                                             || (siteToMoveOnto.owner == 0
                                             && (siteToMoveOnto.strength != 255 || currentSite.strength != 255)
-                                            && (siteToMoveOnto.strength >= currentSite.strength || getStrongestEnemyAround(toMoveOnto) >= currentSite.strength))) {
+                                            && (siteToMoveOnto.strength >= currentSite.strength))) {
                                         direction = Direction.STILL;
                                     }
                                 } else {
@@ -129,15 +140,17 @@ public class CouettoBot {
         }
     }
 
-    private int getStrongestEnemyAround(LocationAndSite location) {
-        int maxEnemyStrengthAround = 0;
-        for (LocationAndSite around : Constants.DIRECTIONS.get(location.getLocation()).values()) {
-            Site site = around.getSite();
-            if (site.owner != 0 && site.owner != Constants.myID && site.strength > maxEnemyStrengthAround) {
-                maxEnemyStrengthAround = site.strength;
+    private boolean hasEnemyNext(LocationAndSite locationToTarget) {
+        for (LocationAndSite loc : Constants.DIRECTIONS.get(locationToTarget.getLocation()).values()) {
+            if (loc.getSite().owner != 0 && loc.getSite().owner != Constants.myID) {
+                return true;
             }
         }
-        return maxEnemyStrengthAround;
+        return false;
+    }
+
+    private int neededStrengthIfEnemy(LocationAndSite current) {
+        return Math.max(10 * current.getSite().production, myLocations.size() > 150 ? 200 : myLocations.size() > 100 ? 150 : myLocations.size() > 30 ? 100 : 50);
     }
 
     private boolean isStrengthNotEnough(Site currentSite) {
@@ -155,7 +168,7 @@ public class CouettoBot {
         for (Map.Entry<Direction, LocationAndSite> dirAndLoc : Constants.DIRECTIONS.get(currentLocation).entrySet()) {
             LocationAndSite potentialEmpty = dirAndLoc.getValue();
             if (potentialEmpty.getSite().owner == 0 && potentialEmpty.getSite().strength == 0
-                    && !nextTurnState.isToAvoid(potentialEmpty.getLocation()) && nextTurnState.willBeEmpty(potentialEmpty.getLocation())) {
+                    && !nextTurnState.isToAvoid(potentialEmpty.getLocation()) && nextTurnState.willNotExceed(potentialEmpty)) {
                 int numberOfCellsToTarget = 0;
                 for (LocationAndSite aroundEmpty : Constants.DIRECTIONS.get(potentialEmpty.getLocation()).values()) {
                     if (aroundEmpty.getSite().owner == Constants.myID) {
@@ -197,13 +210,11 @@ public class CouettoBot {
         };
 
         List<LocationAndSite> nextToEmptyNeutral = myLocations.stream()
-                .filter(HAS_NEXT_EMPTY_NEUTRAL)
-                .filter(l -> l.getSite().strength > 0)
+                .filter(l -> HAS_NEXT_EMPTY_NEUTRAL.test(l) && l.getSite().strength > NEXT_TO_EMPTY_MIN_ATTACK)
                 .sorted((l1, l2) -> Integer.compare(l2.getSite().strength, l1.getSite().strength))
                 .collect(Collectors.toList());
         List<LocationAndSite> notNextToEmptyNeutral = myLocations.stream()
-                .filter(l -> !HAS_NEXT_EMPTY_NEUTRAL.test(l))
-                .filter(l -> l.getSite().strength > 0)
+                .filter(l -> !HAS_NEXT_EMPTY_NEUTRAL.test(l) || l.getSite().strength <= NEXT_TO_EMPTY_MIN_ATTACK)
                 .sorted((l1, l2) -> Integer.compare(l2.getSite().strength, l1.getSite().strength))
                 .collect(Collectors.toList());
 
@@ -257,9 +268,6 @@ public class CouettoBot {
 
 
     private LocationAndSite getLocationToAttack(LocationAndSite current) {
-        if (isStrengthNotEnough(current.getSite())) {
-            return null;
-        }
         Location currentLocation = current.getLocation();
         if (!firstContacts.values().contains(true)) {
             return null;
@@ -268,7 +276,7 @@ public class CouettoBot {
         LocationAndSite minDistanceLocation = null;
         for (LocationAndSite locationAndSite : allLocationAndSites) {
             double distance = Constants.gameMap.getDistance(currentLocation, locationAndSite.getLocation());
-            if (distance <= 3) {
+            if (distance < 3) {
                 Site currentScannedSite = locationAndSite.getSite();
                 if (currentScannedSite.owner != Constants.myID && currentScannedSite.owner != 0 && firstContacts.get(currentScannedSite.owner)) {
                     //double currentScannedCost = pathManager.getCostTo(vertexMap.get(currentScannedLocation));
@@ -318,21 +326,13 @@ public class CouettoBot {
 
                 if (locationWithDistance.isPresent()) {
                     double score;
-                    if (Constants.DENSE_PLAYER) {
-                        if (myLocations.size() < 8) {
-                            score = zone.getScore() / (locationWithDistance.get().getDistance() + (2 * Constants.AVERAGE_CELL_COST));
-                        } else {
-                            score = zone.getScore() / (locationWithDistance.get().getDistance() + Constants.AVERAGE_CELL_COST / 3);
-
-                        }
+                    if ((Constants.DENSE_PLAYER && myLocations.size() < 8) || !(Constants.DENSE_PLAYER && myLocations.size() < 25)) {
+                        score = zone.getScore() / (locationWithDistance.get().getDistance() + (2 * Constants.AVERAGE_CELL_COST));
                     } else {
-                        if (myLocations.size() < 12) {
-                            score = zone.getScore() / (locationWithDistance.get().getDistance() + (3 * Constants.AVERAGE_CELL_COST));
-                        } else {
-                            score = zone.getScore() / (locationWithDistance.get().getDistance() + Constants.AVERAGE_CELL_COST);
+                        score = zone.getScore() / (locationWithDistance.get().getDistance() + Constants.AVERAGE_CELL_COST / 2);
 
-                        }
                     }
+
                     if (score > bestScore) {
                         bestScore = score;
                         locationToTarget = locationWithDistance.get().getLocation();

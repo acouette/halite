@@ -92,4 +92,8 @@ public class NextTurnState {
     public boolean willBeEmpty(Location location) {
         return strengthPerLocation.get(location) == 0;
     }
+
+    public boolean willNotExceed(LocationAndSite target) {
+        return strengthPerLocation.get(target.getLocation()) + target.getSite().strength < 256;
+    }
 }

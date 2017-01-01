@@ -23,7 +23,7 @@ public class Initializer {
             if (bestRemainingLocation.getSite().production == 0) {
                 maxReversedScoreInZone = 0;
             } else {
-                maxReversedScoreInZone = (bestRemainingLocation.getSite().strength / bestRemainingLocation.getSite().production) * 1.8;
+                maxReversedScoreInZone = (bestRemainingLocation.getSite().strength / bestRemainingLocation.getSite().production) * 2;
             }
             Zone zone = getZone(remainingLocations, bestRemainingLocation, maxReversedScoreInZone);
             zones.add(zone);

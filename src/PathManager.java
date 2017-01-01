@@ -19,7 +19,15 @@ public class PathManager {
             vertexMap.put(locAndSites.getLocation(), new Vertex(locAndSites));
             double cost;
             if (locAndSites.getSite().owner == Constants.myID) {
-                cost = myLocations.size() > 100 ? 20 : myLocations.size() > 10 ? 12 : 4;
+                if (myLocations.size() < 6) {
+                    cost = 1;
+                } else if ((Constants.DENSE_PLAYER && myLocations.size() < 8) || (!Constants.DENSE_PLAYER && myLocations.size() < 25)) {
+                    cost = 6;
+                } else {
+                    cost = 20;
+                }
+
+
             } else if (locAndSites.getSite().owner == 0) {
                 cost = (double) locAndSites.getSite().strength / locAndSites.getSite().production;
             } else {
