@@ -14,10 +14,10 @@ public class NextTurnState {
     private static Map<Direction, List<Direction>> LOCATIONS_TO_TRY = new HashMap<>();
 
     static {
-        LOCATIONS_TO_TRY.put(Direction.NORTH, Arrays.asList(Direction.NORTH, Direction.STILL, Direction.WEST, Direction.EAST, Direction.SOUTH));
-        LOCATIONS_TO_TRY.put(Direction.EAST, Arrays.asList(Direction.EAST, Direction.STILL, Direction.SOUTH, Direction.NORTH, Direction.WEST));
-        LOCATIONS_TO_TRY.put(Direction.WEST, Arrays.asList(Direction.WEST, Direction.STILL, Direction.NORTH, Direction.SOUTH, Direction.EAST));
-        LOCATIONS_TO_TRY.put(Direction.SOUTH, Arrays.asList(Direction.SOUTH, Direction.STILL, Direction.WEST, Direction.EAST, Direction.NORTH));
+        LOCATIONS_TO_TRY.put(Direction.NORTH, Arrays.asList(Direction.NORTH, Direction.STILL, Direction.SOUTH, Direction.WEST, Direction.EAST));
+        LOCATIONS_TO_TRY.put(Direction.EAST, Arrays.asList(Direction.EAST, Direction.STILL, Direction.WEST, Direction.SOUTH, Direction.NORTH));
+        LOCATIONS_TO_TRY.put(Direction.WEST, Arrays.asList(Direction.WEST, Direction.STILL, Direction.EAST, Direction.NORTH, Direction.SOUTH));
+        LOCATIONS_TO_TRY.put(Direction.SOUTH, Arrays.asList(Direction.SOUTH, Direction.STILL, Direction.NORTH, Direction.WEST, Direction.EAST));
         LOCATIONS_TO_TRY.put(Direction.STILL, Arrays.asList(Direction.STILL, Direction.NORTH, Direction.EAST, Direction.WEST, Direction.SOUTH));
     }
 
@@ -88,10 +88,6 @@ public class NextTurnState {
         return optimizedDir;
     }
 
-
-    public boolean willBeEmpty(Location location) {
-        return strengthPerLocation.get(location) == 0;
-    }
 
     public boolean willNotExceed(LocationAndSite target) {
         return strengthPerLocation.get(target.getLocation()) + target.getSite().strength < 256;

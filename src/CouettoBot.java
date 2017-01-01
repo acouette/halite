@@ -126,8 +126,8 @@ public class CouettoBot {
                             }
 
                         }
+                        direction = nextTurnState.preventStackingStrength(current, direction, wentToCombat);
                     }
-                    direction = nextTurnState.preventStackingStrength(current, direction, wentToCombat);
                     moves.add(new Move(currentLocation, direction));
                 }
 
