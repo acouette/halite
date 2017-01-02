@@ -154,12 +154,20 @@ public class CouettoBot {
     }
 
     private boolean isStrengthNotEnough(Site currentSite) {
-        if (myLocations.size() > 20) {
-            return (currentSite.strength < currentSite.production * 6)
-                    || ((firstContact || myLocations.size() > 50) && currentSite.strength < 30);
-        } else {
+        if (myLocations.size() < 20) {
             return currentSite.strength < currentSite.production * 5;
         }
+        else if (myLocations.size() < 50) {
+            return currentSite.strength < currentSite.production * 6;
+        } else if (myLocations.size() < 400) {
+            return currentSite.strength < currentSite.production * 6 || currentSite.strength < 30;
+        } else if (myLocations.size() < 800) {
+            return currentSite.strength < currentSite.production * 8 || currentSite.strength < 60;
+        } else {
+            return currentSite.strength < currentSite.production * 10 || currentSite.strength < 100;
+        }
+
+
     }
 
     private Direction getAroundEmptyDirection(NextTurnState nextTurnState, Location currentLocation) {
