@@ -150,14 +150,13 @@ public class CouettoBot {
     }
 
     private int neededStrengthIfEnemy(LocationAndSite current) {
-        return Math.max(10 * current.getSite().production, myLocations.size() > 150 ? 200 : myLocations.size() > 100 ? 150 : myLocations.size() > 30 ? 100 : 50);
+        return myLocations.size() > 100 ? 170 : 100;
     }
 
     private boolean isStrengthNotEnough(Site currentSite) {
         if (myLocations.size() < 20) {
             return currentSite.strength < currentSite.production * 5;
-        }
-        else if (myLocations.size() < 50) {
+        } else if (myLocations.size() < 50) {
             return currentSite.strength < currentSite.production * 6;
         } else if (myLocations.size() < 400) {
             return currentSite.strength < currentSite.production * 6 || currentSite.strength < 30;
@@ -166,7 +165,6 @@ public class CouettoBot {
         } else {
             return currentSite.strength < currentSite.production * 10 || currentSite.strength < 100;
         }
-
 
     }
 
@@ -277,16 +275,13 @@ public class CouettoBot {
 
     private LocationAndSite getLocationToAttack(LocationAndSite current) {
         Location currentLocation = current.getLocation();
-        if (!firstContacts.values().contains(true)) {
-            return null;
-        }
         double maxDistance = -1;
         LocationAndSite minDistanceLocation = null;
         for (LocationAndSite locationAndSite : allLocationAndSites) {
             double distance = Constants.gameMap.getDistance(currentLocation, locationAndSite.getLocation());
             if (distance < 3) {
                 Site currentScannedSite = locationAndSite.getSite();
-                if (currentScannedSite.owner != Constants.myID && currentScannedSite.owner != 0 && firstContacts.get(currentScannedSite.owner)) {
+                if (currentScannedSite.owner != Constants.myID && currentScannedSite.owner != 0 && (firstContacts.get(currentScannedSite.owner) || !firstContact)) {
                     //double currentScannedCost = pathManager.getCostTo(vertexMap.get(currentScannedLocation));
                     if (distance > maxDistance) {
                         boolean foundNeighbour = false;
@@ -334,7 +329,7 @@ public class CouettoBot {
 
                 if (locationWithDistance.isPresent()) {
                     double score;
-                    if ((Constants.DENSE_PLAYER && myLocations.size() < 8) || !(Constants.DENSE_PLAYER && myLocations.size() < 25)) {
+                    if ((Constants.DENSE_PLAYER && myLocations.size() < 12) || !(Constants.DENSE_PLAYER && myLocations.size() < 25)) {
                         score = zone.getScore() / (locationWithDistance.get().getDistance() + (2 * Constants.AVERAGE_CELL_COST));
                     } else {
                         score = zone.getScore() / (locationWithDistance.get().getDistance() + Constants.AVERAGE_CELL_COST / 2);

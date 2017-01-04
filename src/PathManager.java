@@ -21,8 +21,10 @@ public class PathManager {
             if (locAndSites.getSite().owner == Constants.myID) {
                 if (myLocations.size() < 6) {
                     cost = 1;
-                } else if ((Constants.DENSE_PLAYER && myLocations.size() < 8) || (!Constants.DENSE_PLAYER && myLocations.size() < 25)) {
+                } else if ((Constants.DENSE_PLAYER && myLocations.size() < 12) || (!Constants.DENSE_PLAYER && myLocations.size() < 25)) {
                     cost = 6;
+                } else if ((Constants.DENSE_PLAYER && myLocations.size() < 25) || (!Constants.DENSE_PLAYER && myLocations.size() < 50)) {
+                    cost = 14;
                 } else {
                     cost = 20;
                 }
@@ -31,7 +33,7 @@ public class PathManager {
             } else if (locAndSites.getSite().owner == 0) {
                 cost = (double) locAndSites.getSite().strength / locAndSites.getSite().production;
             } else {
-                cost = 2;
+                cost = 1;
             }
 
             costPerLocation.put(locAndSites.getLocation(), cost);
