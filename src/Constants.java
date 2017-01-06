@@ -13,7 +13,7 @@ public class Constants {
     static int myID;
     static GameMap gameMap;
     static int turn;
-    static final Map<Location, Map<Direction, LocationAndSite>> DIRECTIONS = new HashMap<>();
+    static final Map<Location, Map<Direction, Loc>> DIRECTIONS = new HashMap<>();
 
 
     static void initConstants() {

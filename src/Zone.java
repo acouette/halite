@@ -5,17 +5,17 @@ import java.util.List;
  */
 public class Zone {
 
-    private List<LocationAndSite> locations;
+    private List<Loc> locations;
 
     private double score;
 
 
-    public Zone(List<LocationAndSite> locations, double score) {
+    public Zone(List<Loc> locations, double score) {
         this.locations = locations;
         this.score = score;
     }
 
-    public List<LocationAndSite> getLocations() {
+    public List<Loc> getLocations() {
         return locations;
     }
 

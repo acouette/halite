@@ -7,23 +7,23 @@ import java.util.stream.Collectors;
 public class Initializer {
 
 
-    private List<LocationAndSite> allLocationAndSites;
+    private List<Loc> allLocs;
 
     List<Zone> getZones() {
 
 
-        List<LocationAndSite> remainingLocations = new ArrayList<>();
-        remainingLocations.addAll(allLocationAndSites);
+        List<Loc> remainingLocations = new ArrayList<>();
+        remainingLocations.addAll(allLocs);
 
         List<Zone> zones = new ArrayList<>();
         while (!remainingLocations.isEmpty()) {
-            LocationAndSite bestRemainingLocation = remainingLocations.stream()
-                    .min((l1, l2) -> Double.compare((double) l1.getSite().strength / l1.getSite().production, (double) l2.getSite().strength / l2.getSite().production)).get();
+            Loc bestRemainingLocation = remainingLocations.stream()
+                    .min((l1, l2) -> Double.compare((double) l1.strength / l1.production, (double) l2.strength / l2.production)).get();
             double maxReversedScoreInZone;
-            if (bestRemainingLocation.getSite().production == 0) {
+            if (bestRemainingLocation.production == 0) {
                 maxReversedScoreInZone = 0;
             } else {
-                maxReversedScoreInZone = (bestRemainingLocation.getSite().strength / bestRemainingLocation.getSite().production) * 2;
+                maxReversedScoreInZone = (bestRemainingLocation.strength / bestRemainingLocation.production) * 2;
             }
             Zone zone = getZone(remainingLocations, bestRemainingLocation, maxReversedScoreInZone);
             zones.add(zone);
@@ -32,23 +32,23 @@ public class Initializer {
     }
 
 
-    private Zone getZone(List<LocationAndSite> remainingLocations, LocationAndSite source, double maxReversedScoreInZone) {
-        List<LocationAndSite> locations = getLocations(remainingLocations, source, maxReversedScoreInZone);
-        double score = locations.stream().filter(l -> l.getSite().strength > 0).
-                mapToDouble(l -> (double) l.getSite().production / l.getSite().strength).average().getAsDouble();
+    private Zone getZone(List<Loc> remainingLocations, Loc source, double maxReversedScoreInZone) {
+        List<Loc> locations = getLocations(remainingLocations, source, maxReversedScoreInZone);
+        double score = locations.stream().filter(l -> l.strength > 0).
+                mapToDouble(l -> (double) l.production / l.strength).average().getAsDouble();
         return new Zone(locations, score);
     }
 
 
-    private List<LocationAndSite> getLocations(List<LocationAndSite> remainingLocations, LocationAndSite source, double maxReversedScore) {
+    private List<Loc> getLocations(List<Loc> remainingLocations, Loc source, double maxReversedScore) {
         remainingLocations.remove(source);
-        List<LocationAndSite> inZone = new ArrayList<>();
+        List<Loc> inZone = new ArrayList<>();
         inZone.add(source);
         for (Direction direction : Direction.CARDINALS) {
             Location scannedLocation = Constants.gameMap.getLocation(source.getLocation(), direction);
-            LocationAndSite locationAndSite = allLocationAndSites.stream().filter(l -> l.getLocation().equals(scannedLocation)).findAny().get();
-            if (maxReversedScore >= (double) locationAndSite.getSite().strength / locationAndSite.getSite().production && remainingLocations.contains(locationAndSite)) {
-                inZone.addAll(getLocations(remainingLocations, locationAndSite, maxReversedScore));
+            Loc loc = allLocs.stream().filter(l -> l.getLocation().equals(scannedLocation)).findAny().get();
+            if (maxReversedScore >= (double) loc.strength / loc.production && remainingLocations.contains(loc)) {
+                inZone.addAll(getLocations(remainingLocations, loc, maxReversedScore));
             }
         }
         return inZone;
@@ -56,9 +56,9 @@ public class Initializer {
 
 
     void buildDirections() {
-        Map<Location, LocationAndSite> locationAndSitePerLocations = allLocationAndSites.stream().collect(Collectors.toMap(LocationAndSite::getLocation, l -> l));
-        for (LocationAndSite l : allLocationAndSites) {
-            HashMap<Direction, LocationAndSite> toBuild = new HashMap<>();
+        Map<Location, Loc> locationAndSitePerLocations = allLocs.stream().collect(Collectors.toMap(Loc::getLocation, l -> l));
+        for (Loc l : allLocs) {
+            HashMap<Direction, Loc> toBuild = new HashMap<>();
             for (Direction dir : Direction.DIRECTIONS) {
                 toBuild.put(dir, locationAndSitePerLocations.get(Constants.gameMap.getLocation(l.getLocation(), dir)));
             }
@@ -70,33 +70,38 @@ public class Initializer {
 
     void buildAverageCellCost() {
         double cost = 0;
-        for (LocationAndSite locationAndSite : allLocationAndSites) {
-            if (locationAndSite.getSite().production > 0) {
-                cost += (double) locationAndSite.getSite().strength / locationAndSite.getSite().production;
+        for (Loc loc : allLocs) {
+            if (loc.production > 0) {
+                cost += (double) loc.strength / loc.production;
             }
         }
-        Constants.AVERAGE_CELL_COST = cost / allLocationAndSites.size();
+        Constants.AVERAGE_CELL_COST = cost / allLocs.size();
     }
 
     void buildPlayerDensity() {
         Set<Integer> players = new HashSet<>();
-        for (LocationAndSite locationAndSite : allLocationAndSites) {
-            players.add(locationAndSite.getSite().owner);
+        for (Loc loc : allLocs) {
+            players.add(loc.owner);
         }
         int playerCount = players.size() - 1;
         Constants.DENSE_PLAYER = (Constants.gameMap.width + Constants.gameMap.height) / playerCount < 15;
     }
 
-    List<LocationAndSite> getAllLocationAndSites() {
-        List<LocationAndSite> locationAndSites = new ArrayList<>();
+    List<Loc> getAllLocs() {
+        List<Loc> locs = new ArrayList<>();
         for (int y = 0; y < Constants.gameMap.height; y++) {
             for (int x = 0; x < Constants.gameMap.width; x++) {
-                Location loc = new Location(x, y);
-                locationAndSites.add(new LocationAndSite(loc, Constants.gameMap.getSite(loc)));
+                Location location = new Location(x, y);
+                Site site = Constants.gameMap.getSite(location);
+                Loc loc = new Loc(location);
+                loc.owner = site.owner;
+                loc.strength = site.strength;
+                loc.production = site.production;
+                locs.add(loc);
             }
         }
-        allLocationAndSites = locationAndSites;
-        return locationAndSites;
+        allLocs = locs;
+        return locs;
     }
 
 

@@ -3,17 +3,17 @@
  */
 public class AllTargetInfo {
 
-    private LocationAndSite currentLocation;
+    private Loc currentLocation;
 
-    private LocationAndSite locationToTarget;
+    private Loc locationToTarget;
 
-    private LocationAndSite nextLocation;
+    private Loc nextLocation;
 
     private double cost;
 
     private Direction direction;
 
-    public AllTargetInfo(LocationAndSite currentLocation, LocationAndSite locationToTarget, LocationAndSite nextLocation, double cost, Direction direction) {
+    public AllTargetInfo(Loc currentLocation, Loc locationToTarget, Loc nextLocation, double cost, Direction direction) {
         this.currentLocation = currentLocation;
         this.locationToTarget = locationToTarget;
         this.nextLocation = nextLocation;
@@ -21,11 +21,11 @@ public class AllTargetInfo {
         this.direction = direction;
     }
 
-    public LocationAndSite getLocationToTarget() {
+    public Loc getLocationToTarget() {
         return locationToTarget;
     }
 
-    public LocationAndSite getNextLocation() {
+    public Loc getNextLocation() {
         return nextLocation;
     }
 
@@ -37,7 +37,7 @@ public class AllTargetInfo {
         return direction;
     }
 
-    public LocationAndSite getCurrentLocation() {
+    public Loc getCurrentLocation() {
         return currentLocation;
     }
 
