@@ -1,9 +1,7 @@
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
-import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
 public class CouettoBot {
@@ -18,6 +16,7 @@ public class CouettoBot {
     private boolean timeoutFallback = false;
     private List<Loc> myLocations;
     private List<Loc> emptyNeutrals;
+    private boolean firstContact = false;
 
 
     public CouettoBot(String name) {
@@ -36,6 +35,7 @@ public class CouettoBot {
         zones = initializer.getZones();
         initializer.buildAverageCellCost();
         initializer.buildPlayerDensity();
+
 
         while (true) {
             long start = System.currentTimeMillis();
@@ -77,35 +77,36 @@ public class CouettoBot {
                         direction = Direction.STILL;
                     } else {
 
-                        boolean surroundedByFriendly = isSurroundedByFriendly(currentLocation);
                         boolean strengthNotEnough = isStrengthNotEnough(current);
 
-
-                        if (surroundedByFriendly && strengthNotEnough) {
+                        if (current.isSuroundedByMine() && strengthNotEnough) {
                             direction = Direction.STILL;
                         } else {
-
-
-                            pathManager.computePaths(currentLocation);
-                            Loc locationToTarget = getLocationToGo();
-                            if (locationToTarget != null) {
-
+                            if (!current.isSuroundedByMine() || !firstContact || (direction = nextTurnState.getGoodMergeDirection(current)) == null) {
+                                pathManager.computePaths(currentLocation);
+                                Loc locationToTarget = getLocationToGo();
                                 direction = getDirectionFromVertex(currentLocation, locationToTarget.getLocation());
                                 Loc toMoveOnto = Constants.DIRECTIONS.get(currentLocation).get(direction);
-                                wentToCombat = toMoveOnto.isEmptyNeutral();
-                                if ((toMoveOnto.owner == Constants.myID && strengthNotEnough)
-                                        || (toMoveOnto.owner == 0
-                                        && (toMoveOnto.strength != 255 || current.strength != 255)
-                                        && (toMoveOnto.strength >= current.strength))) {
+                                if (toMoveOnto.isMine()) {
+                                    if (strengthNotEnough) {
+                                        direction = Direction.STILL;
+                                    }
+                                } else if (toMoveOnto.isEmptyNeutral()) {
+                                    if (!isOkToFight(current)) {
+                                        direction = Direction.STILL;
+                                    } else {
+                                        wentToCombat = true;
+                                        firstContact = true;
+                                    }
+                                } else if (toMoveOnto.isNeutral() &&
+                                        (toMoveOnto.strength != 255 || current.strength != 255)
+                                        && (toMoveOnto.strength >= current.strength)) {
                                     direction = Direction.STILL;
                                 }
-                            } else {
-                                direction = Direction.STILL;
                             }
-
                         }
-                        direction = nextTurnState.preventStackingStrength(current, direction, wentToCombat);
                     }
+                    direction = nextTurnState.preventStackingStrength(current, direction, wentToCombat);
                     moves.add(new Move(currentLocation, direction));
                 }
 
@@ -137,34 +138,22 @@ public class CouettoBot {
 
     private List<Loc> getLocationsToMoveInOrder() {
 
-        final Predicate<Loc> HAS_NEXT_EMPTY_NEUTRAL = (l) -> {
-            for (Loc locationAndSite : Constants.DIRECTIONS.get(l.getLocation()).values()) {
-                if (locationAndSite.owner == 0 && locationAndSite.strength == 0) {
-                    int myOwnCells = 0;
-                    for (Loc aroundEmpty : Constants.DIRECTIONS.get(locationAndSite.getLocation()).values()) {
-                        if (aroundEmpty.owner == Constants.myID) {
-                            myOwnCells++;
-                        }
-                    }
-                    if (myOwnCells < 4) {
-                        return true;
-                    }
-                }
-            }
-            return false;
-        };
 
         List<Loc> nextToEmptyNeutral = myLocations.stream()
-                .filter(l -> HAS_NEXT_EMPTY_NEUTRAL.test(l) && l.strength > NextTurnState.NEXT_TO_EMPTY_MIN_ATTACK)
+                .filter(l -> l.hasNextEmptyNeutral() && isOkToFight(l))
                 .sorted((l1, l2) -> Integer.compare(l2.strength, l1.strength))
                 .collect(Collectors.toList());
         List<Loc> notNextToEmptyNeutral = myLocations.stream()
-                .filter(l -> !HAS_NEXT_EMPTY_NEUTRAL.test(l) || l.strength <= NextTurnState.NEXT_TO_EMPTY_MIN_ATTACK)
+                .filter(l -> !l.hasNextEmptyNeutral() || !isOkToFight(l))
                 .sorted((l1, l2) -> Integer.compare(l2.strength, l1.strength))
                 .collect(Collectors.toList());
 
         nextToEmptyNeutral.addAll(notNextToEmptyNeutral);
         return nextToEmptyNeutral;
+    }
+
+    private boolean isOkToFight(Loc l) {
+        return l.strength >= l.production * 4;
     }
 
 
@@ -181,20 +170,6 @@ public class CouettoBot {
             }
         }
         return closest;
-
-
-    }
-
-
-    private boolean isSurroundedByFriendly(Location currentLocation) {
-        int i = 0;
-        for (Loc value : Constants.DIRECTIONS.get(currentLocation).values()) {
-            if (value.owner == Constants.myID) {
-                i++;
-            }
-        }
-        return i == 5;
-
     }
 
     private Loc getLocationToGo() {
@@ -202,38 +177,41 @@ public class CouettoBot {
         double bestScore = -1;
 
 
-        Optional<LocationWithDistance> emtpyNeutralsInOrder = emptyNeutrals.stream()
-                .map(l -> new LocationWithDistance(l, pathManager.getCostTo(l.getLocation())))
+        Optional<LocWithCost> emptyNeutralsInOrder = emptyNeutrals.stream()
+                .map(l -> new LocWithCost(l, pathManager.getCostTo(l.getLocation())))
                 .min((l1, l2) -> Double.compare(l1.getDistance(), l2.getDistance()));
-        if (emtpyNeutralsInOrder.isPresent()) {
-            double score = (3 / Constants.AVERAGE_CELL_COST) / emtpyNeutralsInOrder.get().getDistance();
+        if (emptyNeutralsInOrder.isPresent()) {
+            double score = (2.7d / Constants.AVERAGE_CELL_COST) / emptyNeutralsInOrder.get().getDistance();
             if (score > bestScore) {
                 bestScore = score;
-                locationToTarget = emtpyNeutralsInOrder.get().getLocation();
+                locationToTarget = emptyNeutralsInOrder.get().getLocation();
             }
         }
 
         for (Zone zone : zones) {
-            if (isAnyNotOwned(zone)) {
+            List<Loc> locsWithCost = zone.getLocations().stream()
+                    .filter(Loc::isNeutral)
+                    .filter(l -> !l.isEmptyNeutral())
+                    .collect(Collectors.toList());
 
-                Optional<LocationWithDistance> locationWithDistance = zone.getLocations().stream()
-                        .filter(Loc::isNeutral)
-                        .filter(l -> !l.isEmptyNeutral())
-                        .map(l -> new LocationWithDistance(l, pathManager.getCostTo(l.getLocation())))
+            if (!locsWithCost.isEmpty()) {
+
+
+                Optional<LocWithCost> locWithCost = locsWithCost.stream().map(l -> new LocWithCost(l, pathManager.getCostTo(l.getLocation())))
                         .min((l1, l2) -> Double.compare(l1.getDistance(), l2.getDistance()));
 
-                if (locationWithDistance.isPresent()) {
+                if (locWithCost.isPresent()) {
                     double score;
                     if ((Constants.DENSE_PLAYER && myLocations.size() < 12) || !(Constants.DENSE_PLAYER && myLocations.size() < 25)) {
-                        score = zone.getScore() / (locationWithDistance.get().getDistance() + (2 * Constants.AVERAGE_CELL_COST));
+                        score = zone.getScore() / (locWithCost.get().getDistance() + (2 * Constants.AVERAGE_CELL_COST));
                     } else {
-                        score = zone.getScore() / (locationWithDistance.get().getDistance() + Constants.AVERAGE_CELL_COST / 2);
+                        score = zone.getScore() / (locWithCost.get().getDistance() + Constants.AVERAGE_CELL_COST / 2);
 
                     }
 
                     if (score > bestScore) {
                         bestScore = score;
-                        locationToTarget = locationWithDistance.get().getLocation();
+                        locationToTarget = locWithCost.get().getLocation();
                     }
                 }
             }
@@ -241,15 +219,6 @@ public class CouettoBot {
         return locationToTarget;
     }
 
-
-    private boolean isAnyNotOwned(Zone zone) {
-        for (Loc loc : zone.getLocations()) {
-            if (loc.owner != Constants.myID) {
-                return true;
-            }
-        }
-        return false;
-    }
 
     private void refreshSitesData() {
 
@@ -261,6 +230,9 @@ public class CouettoBot {
             loc.setNeutral(false);
             loc.setEnemy(false);
             loc.setMine(false);
+            loc.setHasNextEmptyNeutral(false);
+            loc.setSuroundedByMine(false);
+            loc.setCost(0);
             if (site.owner == 0) {
                 loc.setNeutral(true);
             } else if (site.owner == Constants.myID) {
@@ -278,7 +250,7 @@ public class CouettoBot {
         for (Loc loc : allLocs) {
             double cost;
             if (loc.isNeutral()) {
-                cost = loc.production == 0 ? 0 : (double) loc.strength / loc.production;
+                cost = loc.production == 0 ? 1000 : (double) loc.strength / loc.production;
             } else if (loc.isMine()) {
                 if (myLocations.size() < 6) {
                     cost = 1;
@@ -300,7 +272,7 @@ public class CouettoBot {
         for (Loc loc : allLocs) {
             if (loc.isNeutral() && loc.strength == 0) {
                 boolean emptyNeutral = false;
-                double cost = 0.1;
+                double cost = 1;
                 for (Loc aroundEmpty : Constants.DIRECTIONS.get(loc.getLocation()).values()) {
                     if (aroundEmpty.isMine()) {
                         if (!emptyNeutral) {
@@ -308,9 +280,9 @@ public class CouettoBot {
                             emptyNeutrals.add(loc);
                             emptyNeutral = true;
                         }
-                        cost += 0.01;
+                        cost += 0.05;
                     } else if (aroundEmpty.isEnemy()) {
-                        cost -= 0.01;
+                        cost -= 0.05;
                     }
                 }
                 loc.setCost(cost);
@@ -318,13 +290,27 @@ public class CouettoBot {
         }
 
 
+        for (Loc myLocation : myLocations) {
+            int myLocationsCount = 0;
+            for (Loc around : Constants.DIRECTIONS.get(myLocation.getLocation()).values()) {
+                if (around.isEmptyNeutral()) {
+                    myLocation.setHasNextEmptyNeutral(true);
+                    break;
+                } else if (around.isMine()) {
+                    myLocationsCount++;
+                }
+            }
+            if (myLocationsCount == 5) {
+                myLocation.setSuroundedByMine(true);
+            }
+        }
     }
 
 
     private Direction getDirectionFromVertex(Location currentLocation, Location destination) {
         List<Loc> firstBasedOnVertex = pathManager.getShortestPathTo(destination);
         if (firstBasedOnVertex.size() < 1) {
-            return Direction.EAST;
+            throw new RuntimeException(currentLocation + " could not get path to " + destination + " on turn " + Constants.turn);
         }
         return getDirection(currentLocation, firstBasedOnVertex.get(0).getLocation());
 
@@ -351,12 +337,12 @@ public class CouettoBot {
     }
 
 
-    private class LocationWithDistance {
+    private class LocWithCost {
         private final Loc location;
 
         private final double distance;
 
-        public LocationWithDistance(Loc location, double distance) {
+        public LocWithCost(Loc location, double distance) {
             this.location = location;
             this.distance = distance;
         }

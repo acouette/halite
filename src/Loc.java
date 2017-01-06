@@ -15,7 +15,11 @@ public class Loc {
 
     private boolean emptyNeutral;
 
+    private boolean nextEmptyNeutral;
+
     private double cost;
+
+    private boolean suroundedByMine;
 
     public Loc(Location location) {
         this.location = location;
@@ -89,5 +93,22 @@ public class Loc {
 
     public void setCost(double cost) {
         this.cost = cost;
+    }
+
+
+    public boolean hasNextEmptyNeutral() {
+        return nextEmptyNeutral;
+    }
+
+    public void setHasNextEmptyNeutral(boolean hasNextEmptyNeutral) {
+        this.nextEmptyNeutral = hasNextEmptyNeutral;
+    }
+
+    public boolean isSuroundedByMine() {
+        return suroundedByMine;
+    }
+
+    public void setSuroundedByMine(boolean suroundedByMine) {
+        this.suroundedByMine = suroundedByMine;
     }
 }

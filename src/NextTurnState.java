@@ -14,8 +14,6 @@ public class NextTurnState {
     private static Map<Direction, List<Direction>> LOCATIONS_TO_TRY = new HashMap<>();
 
 
-    public static final int NEXT_TO_EMPTY_MIN_ATTACK = 15;
-
     static {
         LOCATIONS_TO_TRY.put(Direction.NORTH, Arrays.asList(Direction.NORTH, Direction.STILL, Direction.SOUTH, Direction.WEST, Direction.EAST));
         LOCATIONS_TO_TRY.put(Direction.EAST, Arrays.asList(Direction.EAST, Direction.STILL, Direction.WEST, Direction.SOUTH, Direction.NORTH));
@@ -36,38 +34,34 @@ public class NextTurnState {
         }
     }
 
-    public boolean isToAvoid(Location location) {
-        return toExclude.contains(location) || strengthPerLocation.get(location) > 254;
-    }
-
     public Direction preventStackingStrength(Loc current, Direction direction, boolean wentToCombat) {
 
         Direction optimizedDir = direction;
 
-        if (wentToCombat && current.strength < NEXT_TO_EMPTY_MIN_ATTACK) {
-            optimizedDir = Direction.STILL;
-        } else {
-
-
-            int minLoss = Integer.MAX_VALUE;
-            for (Direction dir : LOCATIONS_TO_TRY.get(direction)) {
-                Loc fallback = Constants.DIRECTIONS.get(current.getLocation()).get(dir);
-                if (toExclude.contains(fallback.getLocation())) {
-                    continue;
-                }
-                Location fallbackLocation = fallback.getLocation();
-                boolean noExcess = strengthPerLocation.get(fallbackLocation) < 255
-                        && strengthPerLocation.get(fallbackLocation) + current.strength < 255 + TOLERABLE_LOSS_ON_MERGE;
-                if (noExcess) {
-                    optimizedDir = dir;
-                    break;
-                } else {
-                    if (strengthPerLocation.get(fallbackLocation) + current.strength < minLoss) {
-                        minLoss = strengthPerLocation.get(fallbackLocation) + current.strength;
-                        optimizedDir = dir;
+        if (current.strength > 0) {
+            if (direction != Direction.STILL && strengthPerLocation.get(current.getLocation()) > 0 && noExcess(current, current.getLocation())) {
+                optimizedDir = Direction.STILL;
+            } else {
+                boolean firstTry = true;
+                int minLoss = Integer.MAX_VALUE;
+                for (Direction dir : LOCATIONS_TO_TRY.get(direction)) {
+                    Loc fallback = Constants.DIRECTIONS.get(current.getLocation()).get(dir);
+                    if (toExclude.contains(fallback.getLocation())) {
+                        continue;
                     }
+                    Location fallbackLocation = fallback.getLocation();
+                    boolean noExcess = noExcess(current, fallbackLocation);
+                    if (noExcess && (fallback.isMine() || firstTry)) {
+                        optimizedDir = dir;
+                        break;
+                    } else {
+                        if (strengthPerLocation.get(fallbackLocation) + current.strength < minLoss) {
+                            minLoss = strengthPerLocation.get(fallbackLocation) + current.strength;
+                            optimizedDir = dir;
+                        }
+                    }
+                    firstTry = false;
                 }
-
             }
         }
 
@@ -96,8 +90,22 @@ public class NextTurnState {
         return optimizedDir;
     }
 
+    private boolean noExcess(Loc current, Location fallbackLocation) {
+        return strengthPerLocation.get(fallbackLocation) < 255
+                && strengthPerLocation.get(fallbackLocation) + current.strength < 255 + TOLERABLE_LOSS_ON_MERGE;
+    }
 
-    public boolean willNotExceed(Loc target) {
-        return strengthPerLocation.get(target.getLocation()) + target.strength < 256;
+    public Direction getGoodMergeDirection(Loc current) {
+        int maxStrength = current.strength;
+        Direction dir = null;
+        for (Map.Entry<Direction, Loc> loc : Constants.DIRECTIONS.get(current.getLocation()).entrySet()) {
+            if (loc.getKey() != Direction.STILL) {
+                if (strengthPerLocation.get(loc.getValue().getLocation()) > maxStrength && noExcess(current, loc.getValue().getLocation())) {
+                    maxStrength = strengthPerLocation.get(loc.getValue().getLocation());
+                    dir = loc.getKey();
+                }
+            }
+        }
+        return dir;
     }
 }
