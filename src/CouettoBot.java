@@ -181,7 +181,7 @@ public class CouettoBot {
                 .map(l -> new LocWithCost(l, pathManager.getCostTo(l.getLocation())))
                 .min((l1, l2) -> Double.compare(l1.getDistance(), l2.getDistance()));
         if (emptyNeutralsInOrder.isPresent()) {
-            double score = (2.7d / Constants.AVERAGE_CELL_COST) / emptyNeutralsInOrder.get().getDistance();
+            double score = (3.2d / Constants.AVERAGE_CELL_COST) / emptyNeutralsInOrder.get().getDistance();
             if (score > bestScore) {
                 bestScore = score;
                 locationToTarget = emptyNeutralsInOrder.get().getLocation();
